@@ -1,12 +1,18 @@
 (defproject onyx-sim "0.1.0-SNAPSHOT"
-  :description "FIXME: write description"
+  :description "A simulator for the onyx runtime."
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
-  :dependencies [[org.clojure/clojure "1.8.0"]
-                 [org.clojure/clojurescript "1.9.671" :scope "provided"]
+  :dependencies [[org.clojure/clojure "1.9.0-alpha16"]
+                 [org.clojure/clojurescript "1.9.542"]
+                 [org.clojure/tools.reader "1.0.0-beta3"]
+                 [org.clojure/core.async "0.3.442"]
+                 [clojure-future-spec "1.9.0-alpha17"]
+                 [org.clojure/math.numeric-tower "0.0.4"]
+                 [re-com "0.9.0"]
                  [com.cognitect/transit-clj "0.8.300"]
+                 [cljs-http "0.1.42"]
                  [ring "1.6.2"]
                  [ring/ring-defaults "0.3.1"]
                  [bk/ring-gzip "0.2.1"]
@@ -16,10 +22,17 @@
                  [com.stuartsierra/component "0.3.2"]
                  [org.danielsz/system "0.4.0"]
                  [org.clojure/tools.namespace "0.2.11"]
-                 [reagent "0.6.0"]]
+                 [reagent "0.6.0"]
+                 [posh "0.5.5"]
+                 [datsync "0.0.1-alpha3"]
+                 [com.taoensso/timbre "4.8.0"]
+                 [org.onyxplatform/onyx-spec "0.11.0.2"]
+                 [org.onyxplatform/onyx-local-rt "0.11.0.0-alpha5"]]
+
 
   :plugins [[lein-cljsbuild "1.1.6"]
-            [lein-environ "1.1.0"]]
+            [lein-environ "1.1.0"]
+            [nightlight/lein-nightlight "1.7.2"]]
 
   :min-lein-version "2.6.1"
 
@@ -32,7 +45,7 @@
   :uberjar-name "onyx-sim.jar"
 
   ;; Use `lein run` if you just want to start a HTTP server, without figwheel
-  :main onyx-sim.application
+  :main onyx.sim.application
 
   ;; nREPL by default starts in the :main namespace, we want to start in `user`
   ;; because that's where our development helper functions like (go) and
@@ -43,7 +56,7 @@
               [{:id "app"
                 :source-paths ["src/cljs" "src/cljc" "dev"]
 
-                :figwheel {:on-jsload "onyx-sim.system/reset"}
+                :figwheel {:on-jsload "onyx.sim.system/reset"}
 
                 :compiler {:main cljs.user
                            :asset-path "js/compiled/out"
@@ -54,13 +67,13 @@
                {:id "test"
                 :source-paths ["src/cljs" "test/cljs" "src/cljc" "test/cljc"]
                 :compiler {:output-to "resources/public/js/compiled/testable.js"
-                           :main onyx-sim.test-runner
+                           :main onyx.sim.test-runner
                            :optimizations :none}}
 
                {:id "min"
                 :source-paths ["src/cljs" "src/cljc"]
                 :jar true
-                :compiler {:main onyx-sim.system
+                :compiler {:main onyx.sim.system
                            :output-to "resources/public/js/compiled/onyx_sim.js"
                            :output-dir "target"
                            :source-map-timestamp true

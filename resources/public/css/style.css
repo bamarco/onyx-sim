@@ -1,3 +1,97 @@
-h1 {
-  text-decoration: underline;
+/* onyx/green: #43d16b */
+/* onyx/gray: #354d56 */
+/* onyx.sim/blue: #6a8aac */
+/* onyx.sim/pale-blue: #9ee3ff */
+/* onyx.sim/gold: #c0b283*/
+/* onyx.sim/dark-tan #A07F60 */
+/* onyx.sim/light-tan #D7CEC7 */
+
+
+html, body {
+  font-family "Work Sans", Roboto, "Trebuchet MS", Helvetica, sans-serif;
+/*   color: #c0b283; */
+}
+body {
+  background: radial-gradient(circle at 15% 15%, #A07F60, #D7CEC7);
+/* background: radial-gradient(circle at 15% 15%, #111, #888); */
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+/*   background-color: black; */
+}
+
+code {
+  background-color: white;
+  border: 0;
+}
+pre {
+  white-space: pre-wrap;
+  background-color: white;
+  border: 0;
+  display: block;
+}
+
+.active-logo-img {
+  width: 1.25em;
+  height: 1.25em;
+}
+
+.active-logo {
+  background: white;
+  border-radius: 5px;
+  font-size: 2rem;
+  padding: .25rem;
+  color: #c0b283;}
+
+.spinning {
+  -webkit-animation:spin 4s linear infinite;
+  -moz-animation:spin 4s linear infinite;
+  animation:spin 4s linear infinite;
+}
+@-moz-keyframes spin { 100% { -moz-transform: rotate(360deg); } }
+@-webkit-keyframes spin { 100% { -webkit-transform: rotate(360deg); } }
+@keyframes spin { 100% { -webkit-transform: rotate(360deg); transform:rotate(360deg); } }
+
+
+
+.btn-default {
+  font-family: "Arvo", "Times New Roman", Times, serif;
+}
+.rc-title,  .nav a, .field-label {
+  font-family: "Arvo", "Times New Roman", Times, serif;
+  color: #fc4a1a;
+  letter-spacing: normal;
+}
+
+.level1 {
+  font-size: 2rem;
+  font-variant:   small-caps;
+}
+.level2 {
+  font-size: 1.5rem;
+}
+.level3 {
+  font-size: 1.25rem;
+}
+.level4 {
+  font-size: 1rem;
+}
+.field-label {
+  font-size: 1rem;
+  letter-spacing: normal;
+}
+
+.onyx-sim {
+  background: white;
+  max-width: 100%;
+  width: 120ch;
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 5px;
+  padding-left: .5ch;
+  padding-right: .5ch;
+}
+
+.onyx-inbox, .onyx-outbox {
+  background-color: white;
 }

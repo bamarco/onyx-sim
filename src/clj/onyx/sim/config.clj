@@ -1,4 +1,4 @@
-(ns onyx-sim.config
+(ns onyx.sim.config
   (:require [environ.core :refer [env]]
             [ring.middleware.defaults :refer [wrap-defaults api-defaults]]
             [ring.middleware.gzip :refer [wrap-gzip]]

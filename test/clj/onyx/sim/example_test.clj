@@ -1,4 +1,4 @@
-(ns onyx-sim.example-test
+(ns onyx.sim.example-test
   (:require [clojure.test :refer :all]))
 
 (deftest example-passing-test

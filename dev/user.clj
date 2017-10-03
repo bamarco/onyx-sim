@@ -1,5 +1,5 @@
 (ns user
-  (:require [onyx-sim.application]
+  (:require [onyx.sim.application]
             [com.stuartsierra.component :as component]
             [figwheel-sidecar.config :as fw-config]
             [figwheel-sidecar.system :as fw-sys]
@@ -7,10 +7,10 @@
             [reloaded.repl :refer [system init]]
             [ring.middleware.reload :refer [wrap-reload]]
             [figwheel-sidecar.repl-api :as figwheel]
-            [onyx-sim.config :refer [config]]))
+            [onyx.sim.config :refer [config]]))
 
 (defn dev-system []
-  (assoc (onyx-sim.application/app-system (config))
+  (assoc (onyx.sim.application/app-system (config))
     :figwheel-system (fw-sys/figwheel-system (fw-config/fetch-config))
     :css-watcher (fw-sys/css-watcher {:watch-paths ["resources/public/css"]})))
 
@@ -36,3 +36,7 @@
 (defn browser-repl []
   (println "(browser-repl) is deprecated, use (cljs-repl)")
   (cljs-repl))
+
+
+
+

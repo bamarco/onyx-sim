@@ -1,4 +1,4 @@
-(ns onyx-sim.routes
+(ns onyx.sim.routes
   (:require [clojure.java.io :as io]
             [compojure.core :refer [ANY GET PUT POST DELETE routes]]
             [compojure.route :refer [resources]]
