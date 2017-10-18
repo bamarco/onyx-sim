@@ -1,5 +1,6 @@
 (ns onyx.sim.api
   (:require [onyx-local-rt.api :as onyx]
+            [onyx.static.util :as util]
             [onyx.sim.utils #?@(:clj (:refer [xfn])
                                      :cljs (:refer-macros [xfn]))]))
 
@@ -11,6 +12,7 @@
 (def tick        onyx/tick)
 (def drain       onyx/drain)
 (def new-segment onyx/new-segment)
+(def kw->fn      util/kw->fn)
 
 (defn out
   "Returns outputs of onyx job presumably after draining."

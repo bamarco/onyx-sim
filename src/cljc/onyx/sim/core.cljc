@@ -4,11 +4,20 @@
             [onyx.sim.flui :as flui]
             [onyx.sim.control :as control]
             [onyx.sim.svg :as svg]
+            [clojure.core.async :as async]
             [onyx.sim.event :as event :refer [dispatch raw-dispatch]]
             [onyx.sim.utils :as utils :refer [cat-into]]
             [datascript.core :as d]
             #?(:cljs [posh.reagent :as posh])
             #?(:cljs [reagent.core :as r :refer [atom]])))
+
+
+;;; tasks
+(defn ^:export hello [seg]
+  (assoc seg :hello-msg "Hello, world!"))
+
+;; NOTE: task fns must be defined before job is onyx/init or race conditions occur
+
 ;;
 ;; UTILS
 ;;
@@ -37,6 +46,12 @@
 (defn pull-q [pull-expr query conn & input]
   (map (fn [[eid]] (pull conn pull-expr eid)) (apply q query conn input)))
 
+(defn ^:export simple-toggle [db {:keys [dat.view/entity dat.view/attr dat.view/inputs]}]
+  (let [{:as e :keys [db/id]} (d/entity db entity)
+        v (get e attr)]
+    (log/info "toggle" [id attr] "from" v "to" (not v))
+    [[:db/retract id attr v]
+     [:db/add id attr (not v)]]))
 
 (def control-catalog
   '[{:control/type :indicator
@@ -69,6 +84,9 @@
      :control/name :onyx.sim/hidden?
      :control/label "Show Task Hider"
      :control/toggle (:onyx.sim.control/simple-toggle :onyx.sim/hidden?)
+     :control/toggle-event {:dat.view/handler ::simple-toggle
+                            :dat.view/entity [:control/name :onyx.sim/hidden?]
+                            :dat.view/attr :control/toggled?}
      :control/toggled? true}
     {:control/type :toggle
      :control/name :onyx.sim/next-action?
@@ -134,7 +152,7 @@
 
 (def default-sim
   {:onyx/type :onyx.sim/sim
-   :onyx.sim/import-uris ["example.edn"]
+   :onyx.sim/import-uris ["route.edn" "example.edn"]
    :onyx.sim/speed 1.0
    :onyx.sim/running? false
    :onyx.sim/hidden-tasks #{}})
@@ -158,15 +176,299 @@
                                 :onyx.core/lifecycles :lifecycles
                                 :onyx.core/flow-conditions :flow-conditions})))
 
+(def onyx-batch-size 20)
+
+(def hello-sim
+  (into
+    default-sim
+    {:onyx/name :hello-env
+     :onyx.sim/title "Hello Sim!"
+     :onyx.sim/description "Simulation Example."
+     :onyx.core/job {:onyx/type :onyx.core/job
+                     :onyx.core/catalog [{:onyx/name :in
+                                          :onyx/type :input
+                                          :onyx/batch-size onyx-batch-size}
+                                         {:onyx/name :out
+                                          :onyx/type :output
+                                          :onyx/batch-size onyx-batch-size}
+                                         {:onyx/name :hello
+                                          :onyx/type :function
+                                          :onyx/fn ::hello
+                                          :onyx/batch-size onyx-batch-size}]
+                     :onyx.core/workflow [[:in :hello] [:hello :out]]
+;;                      :onyx.core/flow-conditions []
+                     }}))
+
+(defn resolve-fns [seg]
+  ;; TODO: walk if list keyword->fn
+  ;; ???: just db fns?
+  )
+
+(defn ^:export tick-action [{:as seg :keys [db/id onyx.sim/running?]}]
+  {:control/action [[:db.fn/call onyx/tick id]]
+   :control/disabled? running?})
+
+(defn ^:export rename [renames seg]
+  (clojure.set/rename-keys seg renames))
+
+(defn ^:export knowledge-query [{:keys [dat.sync/q-expr dat.sync/pull-expr dat.sync/entity dat.sync/conn dat.sync/inputs]}]
+  (if q-expr
+    (apply q q-expr conn inputs)
+    (pull conn pull-expr entity)))
+
+;;;
+;;; dat.view.render
+;;;
+(defn ^:export split-attrs [{:as seg :keys [dat.view/value dat.view/path]}]
+  (for [[attr sub-value] value]
+    {:dat.view/path (conj path attr)
+     :dat.view/value sub-value}))
+
+(defn ^:export all-attrs [{:as seg :keys [dat.view/value]}]
+  (log/info "all-attrs" value)
+  (merge (dissoc seg :dat.view/value) value))
+
+(defn ^:export label-view [{:as seg :keys [dat.view/value]}]
+  (assoc seg
+    :dat.view/component
+    [flui/label :label (str value)]))
+
+(defn ^:export checkbox-view [{:keys [dat.view/dispatch!]} {:as seg :keys [control/disabled? control/label control/toggle-label control/toggled? control/toggle-event]}]
+    (assoc seg
+      :dat.view/component
+      [flui/checkbox
+       :model toggled?
+       :disabled? disabled?
+       :label (if toggled? (or toggle-label label) label)
+       :on-change (dispatch! toggle-event)]))
+
+(defn ^:export default-view [seg]
+  (assoc seg
+    :dat.view/component
+    [flui/p
+     (str "No matching view for:"
+          seg)]))
+
+(defn ^:export dat-sync-sub [{:as context :keys [dat.sync/sub-name]} {:as seg :keys [bidi/handler]}]
+  (log/info "dat-sync-sub" sub-name seg)
+  ;; !!!: don't log the context because the logger will look into the conn which contains itself in the compiled onyx env
+  {:dat.view/path [handler sub-name] ;; ???: move to bidi handler?
+   :dat.view/value (knowledge-query (merge context seg))})
+
+;;;
+;;; Lifecycles
+;;;
+(defn system-contexter [resource-locations]
+  (log/info "system-contexter" resource-locations)
+  (fn [event {:as lifecycle :keys [onyx.sim/system]}]
+    (into
+      {}
+      (map (fn [[resource location]]
+             (let [value (get-in (onyx/kw->fn system) location)]
+;;                (log/info "system-resource: " resource " at " location " is " value)
+               [resource value])))
+      resource-locations)))
+
+(defn task-contexter [task-locations]
+  (fn [{:as event :keys [onyx.core/task-map]} lifecycle]
+    (into
+      {}
+      (map (fn [[resource location]]
+             [resource (get-in task-map location)]))
+      task-locations)))
+
+(defn subscription-context [{:as event :keys [onyx.core/task-map]} lifecycle]
+  (assoc
+    (select-keys
+      task-map
+      #{:dat.sync/entity :dat.sync/pull-expr :dat.sync/q-expr :dat.sync/inputs})
+    :dat.sync/sub-name (:onyx/name task-map)))
+
+(def conn-context
+  (system-contexter
+   {:dat.sync/conn [:app-root :conn]}))
+
+(def dispatch-context
+  (system-contexter
+    {:dat.view/dispatch! [:app-root :dispatch!]}))
+
+(defn context-injecter [& fns]
+  (fn [event lifecycle]
+    {:onyx.core/params
+     [(transduce
+       (map #(% event lifecycle))
+       merge
+       {}
+       fns)]}))
+
+(def ^:export dat-sync-sub-lifecycle
+  {:lifecycle/before-task-start (context-injecter subscription-context conn-context)})
+
+(def ^:export dat-view-dispatch-lifecycle
+  {:lifecycle/before-task-start (context-injecter dispatch-context)})'
+
+;;;
+;;; Predicates
+;;;
+(def ^:export always (constantly true))
+
+(defn ^:export label? [event old-seg seg all-new]
+  (= (last (:dat.view/path seg)) :e/name))
+
+(defn ^:export hidden-toggle? [event old-seg seg all-new]
+  ;; TODO: convert to spec
+  (= (last (:dat.view/path seg)) :onyx.sim.sub/hidden?))
+
+(defn ^:export sim-render [outputs]
+  [flui/h-box
+   :children
+   (mapv :dat.view/component outputs)])
+
+;;;
+;;; Render Job
+;;;
+(def the-catalog
+  [{:onyx/name :onyx.sim.route/sim-id
+    :onyx/type :input
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :onyx.sim.sub/hidden?
+    :onyx/fn ::dat-sync-sub
+    :dat.sync/entity [:control/name :onyx.sim/hidden?]
+    :dat.sync/pull-expr '[:control/disabled? :control/label :control/toggle-label :control/toggled? :control/toggle-event]
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view.render/all-attrs
+    :onyx/fn ::all-attrs
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view.render/pull-view
+    :onyx/fn ::split-attrs
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view.render/label
+    :onyx/fn ::label-view
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view.render/checkbox
+    :onyx/fn ::checkbox-view
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view.render/default
+    :onyx/fn ::default-view
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view/mount
+    :onyx/type :output
+    :onyx.sim/render sim-render
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :input-placeholder
+    :onyx/type :input
+    :onyx/batch-size onyx-batch-size}
+   ])
+
+(def the-workflow
+  [[:onyx.sim.route/sim-id :onyx.sim.sub/hidden?]
+   [:onyx.sim.sub/hidden? :dat.view.render/all-attrs]
+   [:dat.view.render/all-attrs :dat.view.render/checkbox]
+   [:dat.view.render/all-attrs :dat.view.render/default]
+   [:input-placeholder :dat.view.render/pull-view]
+   [:dat.view.render/pull-view :dat.view.render/label]
+   [:dat.view.render/pull-view :dat.view.render/default]
+   [:dat.view.render/checkbox :dat.view/mount]
+   [:dat.view.render/label :dat.view/mount]
+   [:dat.view.render/default :dat.view/mount]
+   ])
+
+(def the-flow
+  [{:flow/from :dat.view.render/pull-view
+    :flow/to [:dat.view.render/label]
+    :flow/short-circuit? true
+    :flow/predicate ::label?}
+   {:flow/from :dat.view.render/pull-view
+    :flow/to [:dat.view.render/default]
+    :flow/short-circuit? true
+    :flow/predicate ::always}
+   {:flow/from :dat.view.render/all-attrs
+    :flow/to [:dat.view.render/checkbox]
+    :flow/short-circuit? true
+    :flow/predicate ::hidden-toggle?}
+   {:flow/from :dat.view.render/all-attrs
+    :flow/to [:dat.view.render/default]
+    :flow/short-circuit? true
+    :flow/predicate ::always}])
+
+(def the-life
+  [{:lifecycle/task :onyx.sim.sub/hidden?
+    :lifecycle/calls ::dat-sync-sub-lifecycle
+    :onyx.sim/system :onyx.sim.system/system}
+   {:lifecycle/task :dat.view.render/checkbox
+    :lifecycle/calls ::dat-view-dispatch-lifecycle
+    :onyx.sim/system :onyx.sim.system/system}])
+
+(def the-job
+  {:onyx/type :onyx.core/job
+   :onyx.core/catalog the-catalog
+   :onyx.core/workflow the-workflow
+   :onyx.core/flow-conditions the-flow
+   :onyx.core/lifecycles the-life})
+
+(def site-layout
+  {"/"
+   [{"/bar"
+     ["/active-logo"
+      {"/nav"
+       ["/nav/settings"
+        "/nav/sim/...sim-id"
+        "/nav/sim-manager"]}]}
+    {"/selected"
+     ["/sim/%selected"]
+     "/sim/%sim-id"
+     ["/sim/%sim-id/task-hider"
+      {"/sim/%sim-id/action"
+       ["/sim/%sim-id/action/tick"
+        "/sim/%sim-id/action/step"
+        "/sim/%sim-id/action/drain"
+        "/sim/%sim-id/action/toggle-play"]}
+      "/sim/%sim-id/next-action"
+      {"/sim/%sim-id/task"
+       ["/sim/%sim-id/task/...task-id"]
+       "/sim/%sim-id/tasks"
+       ["/sim/%sim-id/task/...task-id"]}]
+     "/settings"
+     ["/settings/title"
+      "/settings/show-task-hider"
+      "/settings/show-sim-description"
+      "/settings/show-next-action"
+      {"/settings/env-display-style"
+       ["/settings/env-display-style/title"
+        "/settings/env-display-style/pretty"
+        "/settings/env-display-style/render-segments"
+        "/settings/env-display-style/raw"
+        "/settings/env-display-style/only-summary"]}]
+     "/sim-manager"
+     [{"/sim-manager/..."
+       ["/sim/%sim/title"
+        "/sim/%sim/description"
+        "/sim-manager/add"]}]}]})
+
+(def render-sim
+  (into
+    default-sim
+    {:onyx/name :render-example-env
+     :onyx.sim/title "Render Example"
+     :onyx.sim/description "Sandbox to create new dat.view components"
+     :onyx.core/job the-job}))
+
+(defn init-job [{:as sim :keys [onyx.core/job]}]
+  (assoc
+    sim
+    :onyx.sim/env (onyx/init (ds->onyx job))))
+
 (def base-ui
   (into
     control-catalog
-    [(into
-       default-sim
-       {:onyx/name :hello-env
-        :onyx.sim/title "Hello Sim!"
-        :onyx.sim/description "Simulation Example."
-        :onyx.core/job {:onyx/type :onyx.core/job}})
+    [(init-job hello-sim)
+     (init-job render-sim)
      {:onyx/name :onyx.sim/settings
       :onyx.sim/selected-view :onyx.sim/selected-env
       :onyx.sim/selected-env [:onyx/name :hello-env]}]))
@@ -197,9 +499,9 @@
 
 (defn pretty-inbox [conn & {:keys [task-name render]}]
   (let [sim-id (selected-sim conn)
-        {:keys [:onyx.sim/import-uri]
+        {:keys [onyx.sim/import-uris]
          {tasks :tasks} :onyx.sim/env}
-        (pull conn '[:onyx.sim/import-uri
+        (pull conn '[:onyx.sim/import-uris
                      {:onyx.sim/env [*]}] sim-id)
         inbox (get-in tasks [task-name :inbox])]
     [flui/v-box
@@ -213,7 +515,7 @@
          :label "Inbox"
          :level :level3]
         [flui/input-text
-         :model (str import-uri)
+         :model (str (first import-uris))
          :on-change #(dispatch conn {:onyx/type :onyx.sim.event/import-uri
                                      :onyx.sim/sim sim-id
                                      :onyx.sim/task-name task-name
@@ -229,11 +531,11 @@
 
 (defn pretty-task-box [conn task-name]
   (let [sim-id (selected-sim conn)
-        {:keys [:onyx.sim/render]
+        {:keys [onyx.sim/render]
          {tasks :tasks} :onyx.sim/env}
         (pull conn '[:onyx.sim/render {:onyx.sim/env [*]}] sim-id)
         task-type (get-in tasks [task-name :event :onyx.core/task-map :onyx/type])
-        local-render (get-in tasks [task-name :onyx.sim/render])
+        local-render (get-in tasks [task-name :event :onyx.core/task-map :onyx.sim/render])
         render-segments? (control/control-attr conn :onyx.sim/render-segments? :control/toggled?)
         render-fn (if render-segments?
                     (or local-render render code-render)
@@ -301,6 +603,7 @@
        [summary conn (when-not only-summary? identity)]
        ])))
 
+;;; control-fns
 (defn ^:export selected-view [conn]
   (let [{:keys [:onyx.sim/selected-view]} (pull conn '[:onyx.sim/selected-view] [:onyx/name :onyx.sim/settings])]
     selected-view))
@@ -477,8 +780,7 @@
 (defmethod display-selected
   :onyx.sim/selected-env
   [conn _]
-  [sim-view conn]
-  )
+  [sim-view conn])
 
 (defmethod display-selected
   :settings

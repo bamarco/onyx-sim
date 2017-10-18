@@ -1,5 +1,11 @@
 # onyx-sim
 
+## What's this now
+
+onyx simimulator is an interactive implementation of the [onyx local runtime](https://github.com/onyx-platform/onyx-local-rt). It will soon be a core component of the [datsys](https://github.com/metasoarous/datsys) project. Right now the codebase includes a bunch of experiments for future [datview](https://github.com/metasoarous/datview).
+
+No maven deployment yet so git clone it if you want to try it out. Definitely still in alpha phase.
+
 
 ## Development
 
@@ -14,7 +20,7 @@ In the REPL, type
 ```
 
 The call to `(go)` starts the Figwheel server at port 3449, which takes care of
-live reloading ClojureScript code and CSS, and the app server at port 10555 
+live reloading ClojureScript code and CSS, and the app server at port 10555
 which forwards requests to the http-handler you define.
 
 Running `(cljs-repl)` starts the Figwheel ClojureScript REPL. Evaluating

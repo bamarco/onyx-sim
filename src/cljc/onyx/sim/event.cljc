@@ -23,11 +23,42 @@
   ;; TODO: make a nice error for when you didn't use raw-dispatch and you should have
   (intent conn seg))
 
-(defn pull-and-transition-env [db sim-id & transitions]
-  (let [env (:onyx.sim/env (pull db '[{:onyx.sim/env [*]}] sim-id))]
+(defn pull-and-transition-env [db sim-id transition-or-transitions]
+  (let [transitions (if (fn? transition-or-transitions)
+                      [transition-or-transitions]
+                      transition-or-transitions)
+        env (:onyx.sim/env (pull db '[{:onyx.sim/env [*]}] sim-id))]
 ;;     (log/debug "transition" sim-id transitions)
     [(reduce (fn [env tr]
               (tr env)) env transitions)]))
+
+(defn tick-sim [db {:as sim :keys [db/id onyx.sim/speed onyx.sim/pause-count]}]
+  (let [next-pause-count (+ speed pause-count)
+        tick-count (cond
+                     (>= speed 1) speed
+                     (>= next-pause-count 1) 1
+                     :else 0)]
+    (try
+      (if (= tick-count 0)
+        [;[:db/remove id :onyx.sim/pause-count pause-count]
+         [:db/add id :onyx.sim/pause-count next-pause-count]]
+        (pull-and-transition-env db id (repeat tick-count onyx/tick)))
+      (catch #?(:clj Error :cljs :default) e
+        [[:db/add id :onyx.sim/debugging? true]]))))
+
+(defn db-onyx-tick
+  [db]
+  (let [sims (d/q '[:find [(pull ?sim [:db/id :onyx.sim/speed :onyx.sim/running? :onyx.sim/pause-count :onyx.sim/debugging?]) ...]
+                    :where
+                    [?sim :onyx/type :onyx.sim/sim]] db)]
+    (transduce
+      (comp
+        (filter :onyx.sim/running?)
+        (remove :onyx.sim/debugging?)
+        (map (partial tick-sim db)))
+      into
+      []
+      sims)))
 
 (defmethod intent
   :reagent/next-tick
@@ -37,7 +68,6 @@
                     [?sim :onyx/type :onyx.sim/sim]
                     [?sim :onyx.sim/running? ?running]
                     [?sim :onyx.sim/speed ?speed]] db)]
-    [:onyx/name :main-env] ;; FIXME: magic :main-env. ???: use q.
     (reduce concat
     (for [[id running? speed] sims]
       (when running?
@@ -107,12 +137,25 @@
   (pull-and-transition-env db sim onyx/drain))
 
 #?(:cljs
-(defn run-sim [conn sim]
+(defn run-sim
+  "DEPRECATED"
+  [conn sim]
+  ;; causes multi-ticking for all sims if one is running
   (let [running? (:onyx.sim/running? (d/entity @conn sim))]
     (when running?
       ;; FIXME: upgrade performance by doing everything inline
       (dispatch conn {:onyx/type :reagent/next-tick})
       (r/next-tick #(run-sim conn sim))))))
+
+#?(:cljs
+(defn run-sims [conn]
+  (let [running? (d/q '[:find ?running .
+                        :where
+                        [?running :onyx.sim/running? true]]
+                      @conn)]
+    (when running?
+      (d/transact! conn [[:db.fn/call db-onyx-tick]])
+      (r/next-tick #(run-sims conn))))))
 
 (defmethod intent
   :onyx.api/start
@@ -120,8 +163,8 @@
   #?(:cljs
       (do
         (d/transact! conn [[:db/add sim :onyx.sim/running? true]])
-        (run-sim conn sim))
-      :clj (throw "Cannot start simulator in clojure. Only implemented in cljs.")))
+        (run-sims conn))
+      :clj (throw (ex-info "Cannot start simulator in clojure. Only implemented in cljs."))))
 
 (defmethod intent
   :onyx.api/stop
@@ -152,13 +195,12 @@
 #?(:cljs
 (defmethod intent
   :onyx.sim.event/import-segments
-  [conn {:keys [:onyx.sim/sim :onyx.sim/task-name]}]
-  (let [uri (:onyx.sim/import-uri (d/entity @conn sim))]
+  [conn {:keys [onyx.sim/sim onyx.sim/task-name]}]
+  (let [uri (first (:onyx.sim/import-uris (d/entity @conn sim)))]
     (go (let [response (<! (http/get uri))]
           (log/info (str "retrieving edn from <" uri ">"))
           (log/debug "edn is...\n" (ppr-str (:body response)))
-          (d/transact! conn [(into
-                               [:db.fn/call pull-and-transition-env sim]
+          (d/transact! conn [[:db.fn/call pull-and-transition-env sim
                                (for [seg (:body response)]
-                                 #(onyx/new-segment % task-name seg)))]))))))
+                                 #(onyx/new-segment % task-name seg))]]))))))
 

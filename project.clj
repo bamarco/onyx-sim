@@ -32,7 +32,8 @@
 
   :plugins [[lein-cljsbuild "1.1.6"]
             [lein-environ "1.1.0"]
-            [nightlight/lein-nightlight "1.7.2"]]
+;;             [nightlight/lein-nightlight "1.7.2"]
+            ]
 
   :min-lein-version "2.6.1"
 
