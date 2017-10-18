@@ -471,7 +471,7 @@
      (init-job render-sim)
      {:onyx/name :onyx.sim/settings
       :onyx.sim/selected-view :onyx.sim/selected-env
-      :onyx.sim/selected-env [:onyx/name :hello-env]}]))
+      :onyx.sim/selected-env [:onyx/name :render-example-env]}]))
 
 (defn selected-sim [conn]
   (let [{{:keys [:db/id]} :onyx.sim/selected-env} (pull conn '[:onyx.sim/selected-env] [:onyx/name :onyx.sim/settings])]
