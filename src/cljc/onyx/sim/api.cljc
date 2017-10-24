@@ -14,6 +14,8 @@
 (def new-segment onyx/new-segment)
 (def kw->fn      util/kw->fn)
 
+;; TODO: Additionally, :metadata may optionally contain a :job-id key. When specified, this key will be used for the job ID instead of a randomly chosen UUID. Repeated submissions of a job with the same :job-id will be treated as an idempotent action. If a job with the same ID has been submitted more than once, the original task IDs associated with the catalog will be returned, and the job will not run again, even if it has been killed or completed. It is undefined behavior to submit two jobs with the same :job-id metadata whose :workflow, :catalog, :flow-conditions, etc are not equal.
+
 (defn out
   "Returns outputs of onyx job presumably after draining."
   [env]

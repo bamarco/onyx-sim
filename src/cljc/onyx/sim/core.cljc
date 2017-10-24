@@ -5,9 +5,11 @@
             [onyx.sim.control :as control]
             [onyx.sim.svg :as svg]
             [clojure.core.async :as async]
+            [clojure.spec.alpha :as s]
             [onyx.sim.event :as event :refer [dispatch raw-dispatch]]
             [onyx.sim.utils :as utils :refer [cat-into]]
             [datascript.core :as d]
+            [onyx.sim.catalog]
             #?(:cljs [posh.reagent :as posh])
             #?(:cljs [reagent.core :as r :refer [atom]])))
 
@@ -53,6 +55,14 @@
     [[:db/retract id attr v]
      [:db/add id attr (not v)]]))
 
+(defn ^:export simple-value [db {:keys [dat.view/entity dat.view/attr dat.view/inputs]}]
+  (let [{:as e :keys [db/id]} (d/entity db entity)
+        old-v (get e attr)
+        new-v (first inputs)]
+    (log/info "change" [id attr] "from" old-v "to" new-v)
+    [[:db/retract id attr old-v]
+     [:db/add id attr new-v]]))
+
 (def control-catalog
   '[{:control/type :indicator
      :control/name :onyx.sim/next-action
@@ -79,6 +89,9 @@
      :control/name :onyx.sim/description?
      :control/label "Show Sim Description"
      :control/toggle (:onyx.sim.control/simple-toggle :onyx.sim/description?)
+     :control/toggle-event {:dat.view/handler ::simple-toggle
+                            :dat.view/entity [:control/name :onyx.sim/description?]
+                            :dat.view/attr :control/toggled?}
      :control/toggled? false}
     {:control/type :toggle
      :control/name :onyx.sim/hidden?
@@ -98,15 +111,21 @@
      :control/label "Environment Display Style"
      :control/chosen #{:pretty-env}
      :control/choose (:onyx.sim.control/simple-choose-one :onyx.sim/env-display-style)
+     :control/choose-event {:dat.view/handler ::simple-value
+                            :dat.view/entity [:control/name :onyx.sim/hidden?]
+                            :dat.view/attr :control/chosen}
      :control/choices [{:id :pretty-env
+                        :e/order 0
                         :label "Pretty"}
                        {:id :raw-env
+                        :e/order 1
                         :label "Raw"}]}
     {:control/type :toggle
      :control/name :onyx.sim/render-segments?
      :control/label "(Render Segments)"
      :control/toggle (:onyx.sim.control/simple-toggle :onyx.sim/render-segments?)
-     :control/disabled? (:onyx.sim.control/simple-not-chosen? :onyx.sim/env-display-style :pretty-env)
+     :control/disabled? (:onyx.sim.control/simple-not-chosen? :onyx.sim/env-display-style :pretty-env) ;; ***TODO: how to merge from shared subscription to different representation
+             ;;          one is radio button one is checkbox
      :control/toggled? true}
     {:control/type :toggle
      :control/name :onyx.sim/only-summary?
@@ -171,9 +190,13 @@
 
 (defn ds->onyx [sim-job]
   (-> sim-job
-      (clojure.set/rename-keys {:onyx.core/catalog :catalog
-                                :onyx.core/workflow :workflow
-                                :onyx.core/lifecycles :lifecycles
+      (clojure.set/rename-keys {:onyx.core/catalog         :catalog
+                                :onyx.core/workflow        :workflow
+                                :onyx.core/lifecycles      :lifecycles
+                                :onyx.core/windows         :windows
+                                :onyx.core/triggers        :triggers
+                                :onyx.core/task-scheduler  :task-scheduler
+                                :onyc.core/metadata        :metadata
                                 :onyx.core/flow-conditions :flow-conditions})))
 
 (def onyx-batch-size 20)
@@ -217,6 +240,44 @@
     (pull conn pull-expr entity)))
 
 ;;;
+;;; dat.sync/subscription
+;;;
+(defn alias-in [seg alias-attr path f & args]
+  (assoc
+    seg
+    alias-attr
+    (apply f (get-in seg path) args)))
+
+(defn derive-in [seg alias-attr f]
+  (assoc
+    seg
+    alias-attr
+    (f seg)))
+
+(defn ^:export map-alias [alias-map seg]
+  (into
+    seg
+    (map
+      (fn [[alias-attr path]]
+        [alias-attr (get-in seg path)]))
+    alias-map))
+
+(defn ^:export derive-selected? [attr path value seg]
+  (alias-in
+    seg
+    attr
+    path
+    contains?
+    value))
+
+(defn ^:export not-it [attr path seg]
+  (alias-in
+    seg
+    attr
+    path
+    not))
+
+;;;
 ;;; dat.view.render
 ;;;
 (defn ^:export split-attrs [{:as seg :keys [dat.view/value dat.view/path]}]
@@ -224,9 +285,13 @@
     {:dat.view/path (conj path attr)
      :dat.view/value sub-value}))
 
-(defn ^:export all-attrs [{:as seg :keys [dat.view/value]}]
-  (log/info "all-attrs" value)
-  (merge (dissoc seg :dat.view/value) value))
+(defn ^:export all-attrs [{:as seg :keys [dat.view/path]}]
+  (log/info "all-attrs")
+  (into seg
+    (get seg (last path))))
+
+(defn ^:export my-identity [seg]
+  seg)
 
 (defn ^:export label-view [{:as seg :keys [dat.view/value]}]
   (assoc seg
@@ -243,6 +308,7 @@
        :on-change (dispatch! toggle-event)]))
 
 (defn ^:export default-view [seg]
+  (log/info "default-view")
   (assoc seg
     :dat.view/component
     [flui/p
@@ -252,8 +318,16 @@
 (defn ^:export dat-sync-sub [{:as context :keys [dat.sync/sub-name]} {:as seg :keys [bidi/handler]}]
   (log/info "dat-sync-sub" sub-name seg)
   ;; !!!: don't log the context because the logger will look into the conn which contains itself in the compiled onyx env
-  {:dat.view/path [handler sub-name] ;; ???: move to bidi handler?
-   :dat.view/value (knowledge-query (merge context seg))})
+  (assoc
+    seg
+    sub-name (knowledge-query (merge context seg))
+    :dat.view/path [handler sub-name] ;; ???: move to bidi handler?
+    ))
+
+(defn ^:export sim-render [outputs]
+  [flui/h-box
+   :children
+   (mapv :dat.view/component outputs)])
 
 ;;;
 ;;; Lifecycles
@@ -305,36 +379,92 @@
   {:lifecycle/before-task-start (context-injecter subscription-context conn-context)})
 
 (def ^:export dat-view-dispatch-lifecycle
-  {:lifecycle/before-task-start (context-injecter dispatch-context)})'
+  {:lifecycle/before-task-start (context-injecter dispatch-context)})
 
 ;;;
 ;;; Predicates
 ;;;
-(def ^:export always (constantly true))
+(defn ^:export match-any-attr? [event old-seg seg all-new attrs]
+  (log/info "match-attrs" (contains? attrs (last (:dat.view/path seg))))
+  (contains? attrs (last (:dat.view/path seg))))
 
-(defn ^:export label? [event old-seg seg all-new]
-  (= (last (:dat.view/path seg)) :e/name))
+(defn ^:export always [event old-seg seg all-new]
+  (log/info "ALWAYS")
+  true)
 
-(defn ^:export hidden-toggle? [event old-seg seg all-new]
-  ;; TODO: convert to spec
-  (= (last (:dat.view/path seg)) :onyx.sim.sub/hidden?))
+(defn ^:export match-any-spec? [event old-seg seg all-new specs]
+  (some #(s/valid? % seg) specs))
 
-(defn ^:export sim-render [outputs]
-  [flui/h-box
-   :children
-   (mapv :dat.view/component outputs)])
+;;;
+;;; pull-exprs
+;;;
+(def toggle-pull-expr
+  '[:control/label :control/toggle-label :control/toggled? :control/toggle-event])
+
+(def choices-pull-expr
+  '[:control/label :control/chosen :control/choose-event :control/choices])
 
 ;;;
 ;;; Render Job
 ;;;
 (def the-catalog
-  [{:onyx/name :onyx.sim.route/sim-id
+  [{:onyx/name :onyx.sim.route/settings
     :onyx/type :input
     :onyx/batch-size onyx-batch-size}
    {:onyx/name :onyx.sim.sub/hidden?
     :onyx/fn ::dat-sync-sub
     :dat.sync/entity [:control/name :onyx.sim/hidden?]
-    :dat.sync/pull-expr '[:control/disabled? :control/label :control/toggle-label :control/toggled? :control/toggle-event]
+    :dat.sync/pull-expr toggle-pull-expr
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :onyx.sim.sub/description?
+    :onyx/fn ::dat-sync-sub
+    :dat.sync/entity [:control/name :onyx.sim/description?]
+    :dat.sync/pull-expr toggle-pull-expr
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :onyx.sim.sub/next-action?
+    :onyx/fn ::dat-sync-sub
+    :dat.sync/entity [:control/name :onyx.sim/next-action?]
+    :dat.sync/pull-expr toggle-pull-expr
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :onyx.sim.sub/env-display-style
+    :onyx/fn ::dat-sync-sub
+    :dat.sync/entity [:control/name :onyx.sim/env-display-style]
+    :dat.sync/pull-expr choices-pull-expr
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :onyx.sim.sub/pretty?
+    :onyx/fn ::derive-selected?
+    :dat.view/alias [:onyx.sim.sub/env-display-style :control/chosen]
+    :dat.view/selection :pretty-env
+    :onyx/params [:onyx/name :dat.view/alias :dat.view/selection]
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :onyx.sim.sub/render-segments?
+    :onyx/fn ::dat-sync-sub
+    :dat.sync/entity [:control/name :onyx.sim/render-segments?]
+    :dat.sync/pull-expr [:control/label :control/toggled? :control/toggle-event]
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :onyx.sim.sub/render-segments?control
+    :onyx/fn ::map-alias
+    :dat.view/alias {:control/label [:onyx.sim.sub/render-segments? :control/label]
+                     :control/toggled? [:onyx.sim.sub/render-segments? :control/toggled?]
+                     :control/toggle-event [:onyx.sim.sub/render-segments? :control/toggle-event]
+                     :control/disabled? [:onyx.sim.sub/not-pretty?]}
+    :onyx/params [:dat.view/alias]
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :onyx.sim.sub/not-pretty?
+    :onyx/fn ::not-it
+    :dat.view/alias [:onyx.sim.sub/pretty?]
+    :onyx/params [:onyx/name :dat.view/alias]
+    :onyx/type :function
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :onyx.sim.sub/disable-render?
+    :onyx/fn ::not-value
     :onyx/type :function
     :onyx/batch-size onyx-batch-size}
    {:onyx/name :dat.view.render/all-attrs
@@ -360,20 +490,24 @@
    {:onyx/name :dat.view/mount
     :onyx/type :output
     :onyx.sim/render sim-render
-    :onyx/batch-size onyx-batch-size}
-   {:onyx/name :input-placeholder
-    :onyx/type :input
-    :onyx/batch-size onyx-batch-size}
-   ])
+    :onyx/batch-size onyx-batch-size}])
 
 (def the-workflow
-  [[:onyx.sim.route/sim-id :onyx.sim.sub/hidden?]
+  [[:onyx.sim.route/settings :onyx.sim.sub/hidden?]
+   [:onyx.sim.route/settings :onyx.sim.sub/description?]
+   [:onyx.sim.route/settings :onyx.sim.sub/next-action?]
+   [:onyx.sim.route/settings :onyx.sim.sub/env-display-style] [:onyx.sim.sub/env-display-style :onyx.sim.sub/pretty?] [:onyx.sim.sub/pretty? :onyx.sim.sub/not-pretty?]
+   [:onyx.sim.sub/not-pretty? :onyx.sim.sub/render-segments?] [:onyx.sim.sub/render-segments? :onyx.sim.sub/render-segments?control] [:onyx.sim.sub/render-segments?control :dat.view.render/checkbox]
+
    [:onyx.sim.sub/hidden? :dat.view.render/all-attrs]
+   [:onyx.sim.sub/description? :dat.view.render/all-attrs]
+   [:onyx.sim.sub/next-action? :dat.view.render/all-attrs]
+   [:onyx.sim.sub/not-pretty? :dat.view.render/all-attrs]
    [:dat.view.render/all-attrs :dat.view.render/checkbox]
    [:dat.view.render/all-attrs :dat.view.render/default]
-   [:input-placeholder :dat.view.render/pull-view]
    [:dat.view.render/pull-view :dat.view.render/label]
    [:dat.view.render/pull-view :dat.view.render/default]
+
    [:dat.view.render/checkbox :dat.view/mount]
    [:dat.view.render/label :dat.view/mount]
    [:dat.view.render/default :dat.view/mount]
@@ -383,7 +517,8 @@
   [{:flow/from :dat.view.render/pull-view
     :flow/to [:dat.view.render/label]
     :flow/short-circuit? true
-    :flow/predicate ::label?}
+    :attrs #{:e/name}
+    :flow/predicate [::match-any-attr? :attrs]}
    {:flow/from :dat.view.render/pull-view
     :flow/to [:dat.view.render/default]
     :flow/short-circuit? true
@@ -391,7 +526,8 @@
    {:flow/from :dat.view.render/all-attrs
     :flow/to [:dat.view.render/checkbox]
     :flow/short-circuit? true
-    :flow/predicate ::hidden-toggle?}
+    :attrs #{:onyx.sim.sub/hidden? :onyx.sim.sub/description? :onyx.sim.sub/next-action?}
+    :flow/predicate [::match-any-attr? :attrs]}
    {:flow/from :dat.view.render/all-attrs
     :flow/to [:dat.view.render/default]
     :flow/short-circuit? true
@@ -399,6 +535,18 @@
 
 (def the-life
   [{:lifecycle/task :onyx.sim.sub/hidden?
+    :lifecycle/calls ::dat-sync-sub-lifecycle
+    :onyx.sim/system :onyx.sim.system/system}
+   {:lifecycle/task :onyx.sim.sub/description?
+    :lifecycle/calls ::dat-sync-sub-lifecycle
+    :onyx.sim/system :onyx.sim.system/system}
+   {:lifecycle/task :onyx.sim.sub/next-action?
+    :lifecycle/calls ::dat-sync-sub-lifecycle
+    :onyx.sim/system :onyx.sim.system/system}
+   {:lifecycle/task :onyx.sim.sub/env-display-style
+    :lifecycle/calls ::dat-sync-sub-lifecycle
+    :onyx.sim/system :onyx.sim.system/system}
+   {:lifecycle/task :onyx.sim.sub/render-segments?
     :lifecycle/calls ::dat-sync-sub-lifecycle
     :onyx.sim/system :onyx.sim.system/system}
    {:lifecycle/task :dat.view.render/checkbox
