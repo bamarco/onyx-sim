@@ -10,6 +10,7 @@
             [onyx.sim.utils :as utils :refer [cat-into]]
             [datascript.core :as d]
             [onyx.sim.catalog]
+            [onyx.sim.examples.flow-short-circuit]
             #?(:cljs [posh.reagent :as posh])
             #?(:cljs [reagent.core :as r :refer [atom]])))
 
@@ -612,11 +613,25 @@
     sim
     :onyx.sim/env (onyx/init (ds->onyx job))))
 
+(defn make-sim [& {:as options}]
+  (init-job
+    (into
+      default-sim
+      (clojure.set/rename-keys options {:job :onyx.core/job
+                                        :name :onyx/name
+                                        :title :onyx.sim/title
+                                        :description :onyx.sim/description}))))
+
 (def base-ui
   (into
     control-catalog
     [(init-job hello-sim)
      (init-job render-sim)
+     (make-sim
+       :name :flow-short-circuit
+       :job onyx.sim.examples.flow-short-circuit/job
+       :title "Flow Short Circuit"
+       :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job))
      {:onyx/name :onyx.sim/settings
       :onyx.sim/selected-view :onyx.sim/selected-env
       :onyx.sim/selected-env [:onyx/name :render-example-env]}]))
