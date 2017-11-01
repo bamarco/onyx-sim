@@ -14,14 +14,14 @@
     conn))
 
 (defn create-dispatcher [conn]
-  (fn [{:as event :keys [dat.view/handler]}]
-    #(d/transact!
-       conn
-       [[:db.fn/call
-         (onyx/kw->fn handler)
-         (assoc
-           event
-           :dat.view/inputs %&)]])))
+  (fn [{:as event :keys [dat.view/handler]} & inputs]
+    (d/transact!
+      conn
+      [[:db.fn/call
+        (onyx/kw->fn handler)
+        (assoc
+          event
+          :dat.view/inputs inputs)]])))
 
 (defn show-ui [conn]
   [sim/sim-selector conn])

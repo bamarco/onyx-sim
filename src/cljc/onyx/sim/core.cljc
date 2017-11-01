@@ -32,6 +32,31 @@
 (def sim-dark-tan "#A07F60")
 (def sim-light-tan "#D7CEC7")
 
+(def onyx-batch-size 20)
+
+(def task-colors
+  {:function sim-pale-blue
+   :input onyx-gray
+   :output onyx-green})
+
+(def default-sim
+  {:onyx/type :onyx.sim/sim
+   :onyx.sim/import-uris ["verbose.edn" "route.edn" "example.edn"]
+   :onyx.sim/speed 1.0
+   :onyx.sim/running? false
+   :onyx.sim/hidden-tasks #{}})
+
+(defn ds->onyx [sim-job]
+  (-> sim-job
+      (clojure.set/rename-keys {:onyx.core/catalog         :catalog
+                                :onyx.core/workflow        :workflow
+                                :onyx.core/lifecycles      :lifecycles
+                                :onyx.core/windows         :windows
+                                :onyx.core/triggers        :triggers
+                                :onyx.core/task-scheduler  :task-scheduler
+                                :onyc.core/metadata        :metadata
+                                :onyx.core/flow-conditions :flow-conditions})))
+
 (def q
   #?(:cljs
       (comp deref posh/q)
@@ -63,6 +88,262 @@
     (log/info "change" [id attr] "from" old-v "to" new-v)
     [[:db/retract id attr old-v]
      [:db/add id attr new-v]]))
+
+(def new-setting-catalog
+  [{:db/valueType :db.type/ref
+    :e/type :e.type/type
+    :db/ident :new-sim/env-display-style
+    :db/cardinality :db.cardinality/one
+    :e.type/attrs [:e/name :onyx/name :e/order :new-sim/env-display-option]}
+   {:db/valueType :db.type/ref
+    :e/type :e.type/type
+    :db/ident :new-sim/env-display-option
+    :db/cardinality :db.cardinality/many
+    :e.type/attrs [:e/name :onyx/name]}
+   {:db/ident :new-sim/show-task-hider?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db/doc "Show the task hider for onyx sim?"
+    :e/name "Show Task Hider"}
+   {:db/ident :new-sim/show-sim-description?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db/doc "Show the description for onyx sim?"
+    :e/name "Show Sim Description"}
+   {:db/ident :new-sim/show-next-action?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db/doc "Show the next action for onyx sim?"
+    :e/name "Show Next Action"}
+   {:e/type :e.type/type
+    :db/ident :new-sim
+    :e.type/attrs [:e/name :e/description :e/order :onyx/name :new-sim/env-display-style :new-sim/env-display-option :new-sim/show-task-hider? :new-sim/show-next-action? :new-sim/show-sim-description?]}
+   {:e/name "(Render Segments)"
+    :e/type :new-sim/env-display-option
+    :onyx/name :new-sim/raw-env}
+   {:e/name "(Only Summary)"
+    :e/type :new-sim/env-display-option
+    :onyx/name :new-sim/only-summary}
+   {:e/name "Pretty"
+    :e/type :new-sim/env-display-style
+    :onyx/name :new-sim/pretty-env
+    :e/order 0
+    :new-sim/env-display-options [[:onyx/name :new-sim/render-segments]]}
+   {:e/name "Raw"
+    :e/type :new-sim/env-display-style
+    :onyx/name :new-sim/raw-env
+    :e/order 1
+    :new-sim/env-display-options [[:onyx/name :new-sim/only-summary]]}
+   {:onyx/name :new-sim
+    :e/name "New Settings Sim"
+    :e/description "Sim using the new settings style that integrates more closely with dat.view"
+    :e/order 0
+    :new-sim/env-display-style [:onyx/name :new-sim/pretty-env]
+    :new-sim/env-display-options [[:onyx/name :new-sim/render-segments]]
+    :new-sim/show-task-hider? true
+    :new-sim/show-sim-description? false
+    :new-sim/show-next-action? true}
+   {:onyx/name :new-sim.sub/settings
+    :onyx/type :function
+    :dat.view/entity [:onyx/name :new-sim]
+    :dat.view/pull-expr [:e/name :e/description :e/order {:new-sim/env-display-style [:e/name]} {:new-sim/env-display-option [:e/name]} :new-sim/show-task-hider? :new-sim/show-next-action? :new-sim/show-sim-description?]}
+
+   {:onyx/name :new-sim.sub/settings-label
+    :dat.view/value {:e/name "Settings"}}
+   {:onyx/name :new-sim.sub/env-display-label
+    :dat.view/value {:e/name "Environment Display Style"}}
+   {:onyx.name :new-sim.sub/pretty-env
+    :dat.view/entity [:onyx/name :new-sim/pretty-env]
+    :dat.view/pull-expr '[:e/name]}
+   {:onyx.name :new-sim.sub/raw-env
+    :dat.view/entity [:onyx/name :new-sim/raw-env]
+    :dat.view/pull-expr '[:e/name]}
+   {:onyx/name :new-sim.sub/pretty?
+    :dat.view/value {:e/order 5}
+    :dat.view/alias {:dat.view/selected [:new-sim.sub/settings :new-sim/env-display-style]
+                     :dat.view/option [:new-sim.sub/pretty-env]}}
+   {:onyx/name :new-sim.sub/render-segments?
+    :dat.view/value {:e/order 6} ;; ***TODO: option/selected for multi-cardinality
+    :dat.view/alias {:dat.view/option [:new-sim.sub/settings :new-sim/env-display-option]
+                     :dat.view/selected []}}
+   {:onyx/name :new-sim.sub/raw?
+    :dat.view/value {:e/order 7}
+    :dat.view/alias {:dat.view/selected [:new-sim.sub/settings :new-sim/env-display-style]
+                     :dat.view/option [:new-sim.sub/pretty-env]}}
+
+   {:onyx/name :pull-attrs}
+   :dat.view/layout-expr
+   '{:route/index
+     [{:new-sim.sub/top-bar
+       [{:new-sim.sub/logo
+         [:new-sim.sub/active-icon :new-sim.sub/active-icon-label]}
+        {:new-sim.sub/tab-bar
+         [:new-sim.sub/settings-icon
+          {:new-sim.sub/sims-icon [{* [:e/name]}]}
+          :new-sim.sub/config-sims-icon]}]}
+      {:new-sim.sub/main-panel
+       #{{:new-sim.sub/selected-sim
+          [:new-sim.sub/hidden-tasks-label
+           :new-sim.sub/hidden-tasks
+           {:new-sim.sub/control [*]}
+           {:new-sim.sub/action-bar
+            [:new-sim.sub/next-action]}
+           {:new-sim.sub/task [*]}]}
+         {:new-sim.sub/settings
+          [:new-sim.sub/settings-label
+           :new-sim/show-sim-task-hider?
+           :new-sim/show-sim-description?
+           :new-sim/show-next-action?
+           :new-sim.sub/env-display-label
+           :new-sim.sub/pretty?
+           :new-sim.sub/render-segments?
+           :new-sim.sub/raw?
+           :new-sim.sub/only-summary?]}
+         {:new-sim.sub/sim-manager
+          [:new-sim.sub/sim-manager-title
+           {:new-sim.sub/manage-sim
+            [{* [:e/name :e/description]}]}
+           :new-sim.sub/add-sim]}}}]}])
+
+(def dat-expr '[*]
+;;   '[:dat.view/route
+;;     :dat.view/style
+;;     :dat.view/layout
+;;     :dat.view/represent
+;;     :dat.view/tabs
+;;     :dat.view/tab-set
+;;     :dat.view/event]
+  )
+
+(defn pull-env [conn sim-id]
+  (:onyx.sim/env (d/pull @conn '[{:onyx.sim/env [*]}] sim-id)))
+
+(defn pull-job [conn sim-id]
+  (:onyx.core/job (d/pull @conn '[{:onyx.core/job [{:onyx.core/catalog [*]} *]}] sim-id)))
+
+(defn render-segment [conn sim-id seg]
+  (log/info "rendering seg" seg)
+  ;; TODO: it's looping infinitely. options:
+  ;;       - easiest worst performant: init a fresh instance
+  ;;       - cache a clean instance of the env
+  ;;       - asynchronously submit a job with a render-id and fill back in the result with a wait and replace object
+  (let [;;env (pull-env conn sim-id)
+        env (-> (pull-job conn sim-id)
+                ds->onyx
+                onyx/init)
+         drained-env (-> env
+                         (onyx/new-segment :dat.view/render seg)
+                         onyx/drain)
+         ]
+;;     (log/info "clean env" (:dat.view/component (first (:outputs (:dat.view/mount2 (:tasks drained-env))))))
+    (-> drained-env
+        :tasks
+        :dat.view/mount2
+        :outputs
+        first
+        :dat.view/component)))
+
+(defn ^:export dat-view-box [{:keys [dat.sync/conn]}
+                             {:as seg :keys [dat.view/direction dat.view/layout dat.view/style]}]
+  (log/info "dat-view-box" layout)
+  (let [sim-id [:onyx/name :verbose-sim]
+        children (mapv
+                   (fn [item]
+                     (log/info "render-segment" (render-segment conn sim-id item))
+                     [render-segment conn sim-id item])
+                   layout)]
+    ;; FIXME: hardcoded sim-id
+    (assoc
+      seg
+      :dat.view/component
+      [(case direction
+         :horizontal flui/h-box
+         flui/v-box)
+       :style style
+       :children children])))
+
+(defn ^:export dat-view-label [sys {:as seg :keys [dat.view/label]}]
+  (assoc
+    seg
+    :dat.view/component
+    [flui/label :label label]))
+
+(defn ^:export dat-view-default [seg]
+  (assoc
+    seg
+    :dat.view/component
+    [flui/p (str "Unknown representation:" seg)]))
+
+(defn ^:export dat-view-router [{:keys [dat.sync/conn]} {:keys [dat.view/route db/id]}]
+  (log/info "Routing (or " id route ")")
+  (pull conn '[*] (or id [:dat.view/route route])))
+
+(defn with-subscriptions [system {:as seg :keys [dat.view/subscription]}]
+  (into
+    seg
+    ;; TODO: run subscription through onyx if it exists
+    nil
+    ))
+
+(defn process-tab [system tab]
+  (with-subscriptions system tab))
+
+(defn expand-tab-sets [system]
+  (fn [step]
+    (fn
+      ([] (step))
+      ([acc] (step acc))
+      ([in acc]
+       (if (= (:dat.view/represent in) :dat.view.control/tab-set)
+         (transduce (map #(process-tab system %)) step acc in)
+         (step acc (process-tab system in)))))))
+
+(defn process-tabs [system tabs]
+  (into
+    []
+    (expand-tab-sets system)
+    (sort-by :e/order tabs)))
+
+(defn ^:export robust-tab-bar [{:as system :keys [dat.view/dispatch!]} {:keys [dat.view/tabs dat.view/event]}]
+  (let [tabs (process-tabs system tabs)]
+    {:dat.view/component
+     [flui/horizontal-bar-tabs
+      :tabs tabs
+      :label-fn :dat.view.control/tab-label
+      :id-fn :dat.view.control/tab-id
+      :on-change (partial dispatch! event)
+      ;; TODO: figure out what horizontal-bar-tabs returns for the event value. Then create a handler that works like ::simple-value that can handle this input type.
+      ]}))
+
+(defn ^:export robust-box [system {:keys [dat.view/direction dat.view/style dat.view/layout]}]
+  [(case direction
+     :horizontal flui/h-box
+     flui/v-box)
+   :style style
+   :children
+   (for [item layout]
+     ;; ???: process item through onyx
+     (:dat.view/component item))])
+
+(defn ^:export robust-modal-box [system {:keys [dat.view/mode dat.view/layout]}]
+  [flui/box
+   :child
+   ;; ???: process item through onyx
+   (:dat.view/component (first (filter #(= mode (:dat.view/mode %)) layout)))])
+
+(def new-sim-workflow
+  [[:route/settings :new-sim.sub/settings]
+   [:new-sim.sub/settings :dat.view/pull-form]
+   [:new.sim.sub/settings-label :dat.view.control/title]
+   [:new.sim.sub/env-diplay-label :dat.view.control/title]
+   [:new-sim.sub/settings :new-sim.sub/pretty-env]
+   [:new-sim.sub/settings :new-sim.sub/raw-env]
+   [:new-sim.sub/pretty-env :new-sim.sub/pretty?]
+   [:new-sim.sub/raw-env :new-sim.sub/raw?]
+   [:new-sim.sub/pretty? :radio-choice]
+   [:new-sim.sub/raw? :radio-choice]
+   ])
+
 
 (def control-catalog
   '[{:control/type :indicator
@@ -117,16 +398,19 @@
                             :dat.view/attr :control/chosen}
      :control/choices [{:id :pretty-env
                         :e/order 0
-                        :label "Pretty"}
+                        :label "Pretty"
+                        :e/name "Pretty"
+
+                        }
                        {:id :raw-env
                         :e/order 1
-                        :label "Raw"}]}
+                        :label "Raw"
+                        :e/name "Raw"}]}
     {:control/type :toggle
      :control/name :onyx.sim/render-segments?
      :control/label "(Render Segments)"
      :control/toggle (:onyx.sim.control/simple-toggle :onyx.sim/render-segments?)
-     :control/disabled? (:onyx.sim.control/simple-not-chosen? :onyx.sim/env-display-style :pretty-env) ;; ***TODO: how to merge from shared subscription to different representation
-             ;;          one is radio button one is checkbox
+     :control/disabled? (:onyx.sim.control/simple-not-chosen? :onyx.sim/env-display-style :pretty-env)
      :control/toggled? true}
     {:control/type :toggle
      :control/name :onyx.sim/only-summary?
@@ -165,17 +449,7 @@
      :control/id-fn :onyx/name
      :control/label-fn :onyx/name}])
 
-(def task-colors
-  {:function sim-pale-blue
-   :input onyx-gray
-   :output onyx-green})
 
-(def default-sim
-  {:onyx/type :onyx.sim/sim
-   :onyx.sim/import-uris ["route.edn" "example.edn"]
-   :onyx.sim/speed 1.0
-   :onyx.sim/running? false
-   :onyx.sim/hidden-tasks #{}})
 
 
 (def ds-schema
@@ -185,22 +459,13 @@
                            :db/cardinality :db.cardinality/many}
    :onyx/name {:db/unique :db.unique/identity}
    :control/name {:db/unique :db.unique/identity}
+   :dat.view/route {:db/unique :db.unique/identity}
+   :dat.view/layout {:db.type :db.type/ref
+                     :db/cardinality :db.cardinality/many}
    :onyx.core/job {:db/type :db.type/ref}
    :onyx.sim/selected-env {:db/type :db.type/ref}
    :onyx.sim/env {:db/type :db.type/ref}})
 
-(defn ds->onyx [sim-job]
-  (-> sim-job
-      (clojure.set/rename-keys {:onyx.core/catalog         :catalog
-                                :onyx.core/workflow        :workflow
-                                :onyx.core/lifecycles      :lifecycles
-                                :onyx.core/windows         :windows
-                                :onyx.core/triggers        :triggers
-                                :onyx.core/task-scheduler  :task-scheduler
-                                :onyc.core/metadata        :metadata
-                                :onyx.core/flow-conditions :flow-conditions})))
-
-(def onyx-batch-size 20)
 
 (def hello-sim
   (into
@@ -285,6 +550,10 @@
   (for [[attr sub-value] value]
     {:dat.view/path (conj path attr)
      :dat.view/value sub-value}))
+
+(defn ^:export split-attrs2 [{:keys []} {:as seg :keys []}]
+
+  )
 
 (defn ^:export all-attrs [{:as seg :keys [dat.view/path]}]
   (log/info "all-attrs")
@@ -382,6 +651,9 @@
 (def ^:export dat-view-dispatch-lifecycle
   {:lifecycle/before-task-start (context-injecter dispatch-context)})
 
+(def ^:export dat-view-lifecycle
+  {:lifecycle/before-task-start (context-injecter conn-context dispatch-context)})
+
 ;;;
 ;;; Predicates
 ;;;
@@ -395,6 +667,10 @@
 
 (defn ^:export match-any-spec? [event old-seg seg all-new specs]
   (some #(s/valid? % seg) specs))
+
+(defn ^:export represent? [event old-seg seg all-new represent]
+  (log/info "represent?" represent (= (:dat.view/represent seg) represent))
+  (= (:dat.view/represent seg) represent))
 
 ;;;
 ;;; pull-exprs
@@ -561,45 +837,6 @@
    :onyx.core/flow-conditions the-flow
    :onyx.core/lifecycles the-life})
 
-(def site-layout
-  {"/"
-   [{"/bar"
-     ["/active-logo"
-      {"/nav"
-       ["/nav/settings"
-        "/nav/sim/...sim-id"
-        "/nav/sim-manager"]}]}
-    {"/selected"
-     ["/sim/%selected"]
-     "/sim/%sim-id"
-     ["/sim/%sim-id/task-hider"
-      {"/sim/%sim-id/action"
-       ["/sim/%sim-id/action/tick"
-        "/sim/%sim-id/action/step"
-        "/sim/%sim-id/action/drain"
-        "/sim/%sim-id/action/toggle-play"]}
-      "/sim/%sim-id/next-action"
-      {"/sim/%sim-id/task"
-       ["/sim/%sim-id/task/...task-id"]
-       "/sim/%sim-id/tasks"
-       ["/sim/%sim-id/task/...task-id"]}]
-     "/settings"
-     ["/settings/title"
-      "/settings/show-task-hider"
-      "/settings/show-sim-description"
-      "/settings/show-next-action"
-      {"/settings/env-display-style"
-       ["/settings/env-display-style/title"
-        "/settings/env-display-style/pretty"
-        "/settings/env-display-style/render-segments"
-        "/settings/env-display-style/raw"
-        "/settings/env-display-style/only-summary"]}]
-     "/sim-manager"
-     [{"/sim-manager/..."
-       ["/sim/%sim/title"
-        "/sim/%sim/description"
-        "/sim-manager/add"]}]}]})
-
 (def render-sim
   (into
     default-sim
@@ -607,6 +844,148 @@
      :onyx.sim/title "Render Example"
      :onyx.sim/description "Sandbox to create new dat.view components"
      :onyx.core/job the-job}))
+
+
+
+(def verbose-hello-world
+   [{:dat.view/route :dat.view/hello-world
+     :dat.view/represent :dat.view.represent/label
+     :dat.view/label "Hello World!"}
+    {:dat.view/route :dat.view/index
+     :dat.view/style {:background-color sim-dark-tan}
+     :dat.view/direction :vertical
+     :dat.view/represent :dat.view.represent/box
+     :dat.view/layout [[:dat.view/route :dat.view/hello-world]]}
+
+;;     {:dat.view/route :onyx.sub/top-bar
+;;      :e/order 0
+;;      :dat.view/represent :dat.view.container/h-box
+;;      :dat.view/layout [[:dat.view/route :onyx.sim.route/active-logo]
+;;                        [:dat.view/route :onyx.sim.route/tab-bar]]}
+;;     {:dat.view/route :onyx.sim.route/main-panel
+;;      :e/order 1
+;;      :dat.view/represent :dat.view.container/modal-box
+;;      :dat.view/mode :settings
+;;      :dat.view/layout [[:dat.view/route :onyx.sim.route/sim]
+;;                        [:dat.view/route :onyx.sim.route/settings]
+;;                        [:dat.view/route :onyx.sim.route/sim-manager]]}
+;;     {:dat.view/route :onyx.sim.route/active-logo
+;;      :e/order 0
+;;      :dat.view/represent :dat.view.container/h-box
+;;      :dat.view/layout [[:dat.view/route :onyx.sim.route/active-icon]
+;;                        [:dat.view/route :onyx.sim.route/partial-logo-name]]}
+;;     {:dat.view/route :onyx.sim.route/sim
+;;      :dat.view/represent :dat.view.container/v-box
+;;      :dat.view/layout [[:dat.view/route ]
+;;                         ]}
+;;     {:dat.view/route :onyx.sim.route/tab-bar
+;;      :e/order 1
+;;      :dat.view/represent :dat.view.component/tab-bar
+;;      :dat.view/tabs [[:dat.view/route :onyx.sim.route/settings-icon]
+;;                      [:dat.view/route :onyx.sim.route/sim-icons]
+;;                      [:dat.view/route :onyx.sim.route/manager-icon]]}
+;;     {:dat.view/route :onyx.sim.route/settings-icon
+;;      :e/order 0
+;;      :dat.view/mode :settings
+;;      :dat.view.control/tab-id :settings
+;;      :dat.view.control/tab-label [:i {:class "zmdi zmdi-settings"}]
+;;      :dat.view/event {:dat.view/handler ::simple-value
+;;                       :dat.view/entity [:dat.view/route :onyx.sim.route/main-panel]
+;;                       :dat.view/attr :dat.view/mode}}
+;;     {:dat.view/route :onyx.sim.route/manager-icon
+;;      :dat.view/mode :manager
+;;      :dat.view.control/tab-id :manager
+;;      :dat.view.control/tab-label [:i {:class "zmdi zmdi-widgets"}]
+;;      :e/order 2
+;;      :dat.view/event {:dat.view/handler ::simple-value
+;;                       :dat.view/entity [:dat.view/route :onyx.sim.route/main-panel]
+;;                       :dat.view/attr :dat.view/mode}}
+;;     {:dat.view/route :onyx.sim.route/sim-icons
+;;      :e/order 1
+;;      :dat.view/represent :dat.view.control/tab-set
+;;      :dat.view/subscription [[:dat.view/route :onyx.sim.sub/sim-tabs]]}
+;;     {:dat.view/route :onyx.sim.sub/sim-tabs
+;;      :onyx.sim/segment []
+;;      :dat.view/alias {:dat.view.control/tab-label [:e/name]
+;;                       :dat.view.control/tab-id [:db/id]
+;;                       :dat.view/mode [:db/id]}
+;;      :dat.view/event :pulled-event ;; ***TODO: how does event get added
+;;      :dat.view/q-expr '[:find (pull ?sim [:e/name])
+;;                         :in $
+;;                         :where
+;;                         [?sim :onyx/type :onyx.sim/sim]]}
+    ])
+
+(def verbose-catalog
+  [{:onyx/name :dat.view/render
+    :onyx/type :input
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view/router
+    :onyx/type :function
+    :onyx/fn ::dat-view-router
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view.represent/box
+    :onyx/type :function
+    :onyx/fn ::dat-view-box
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view.represent/label
+    :onyx/type :function
+    :onyx/fn ::dat-view-label
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view.represent/default
+    :onyx/type :function
+    :onyx/fn ::dat-view-default
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view/mount2
+    :onyx/type :output
+    :onyx.sim/render sim-render
+    :onyt/batch-size onyx-batch-size}])
+
+(def verbose-lifecycles
+  [{:lifecycle/task :dat.view/router
+    :lifecycle/calls ::dat-view-lifecycle
+    :onyx.sim/system :onyx.sim.system/system}
+   {:lifecycle/task :dat.view.represent/box
+    :lifecycle/calls ::dat-view-lifecycle
+    :onyx.sim/system :onyx.sim.system/system}
+   {:lifecycle/task :dat.view.represent/label
+    :lifecycle/calls ::dat-view-lifecycle
+    :onyx.sim/system :onyx.sim.system/system}])
+
+(def verbose-sim
+  (into
+    default-sim
+    {:onyx/type :onyx.sim/sim
+     :onyx/name :verbose-sim
+     :onyx.sim/title "New Route Sim"
+     :onyx.sim/description "Verbose Layout Method"
+     :onyx.core/job {:onyx/type :onyx.core/job
+                     :onyx.core/catalog verbose-catalog
+                     :onyx.core/lifecycles verbose-lifecycles
+                     :onyx.core/workflow
+                     [[:dat.view/render :dat.view/router]
+                      [:dat.view/router :dat.view.represent/box]
+                      [:dat.view/router :dat.view.represent/label]
+                      [:dat.view/router :dat.view.represent/default]
+                      [:dat.view.represent/default :dat.view/mount2]
+                      [:dat.view.represent/label :dat.view/mount2]
+                      [:dat.view.represent/box :dat.view/mount2]]
+
+                     :onyx.core/flow-conditions
+                     [{:flow/from :dat.view/router
+                       :flow/to [:dat.view.represent/box]
+                       :dat.view/represent :dat.view.represent/box
+                       :flow/predicate [::represent? :dat.view/represent]
+                       :flow/short-circuit? true}
+                      {:flow/from :dat.view/router
+                       :flow/to [:dat.view.represent/label]
+                       :dat.view/represent :dat.view.represent/label
+                       :flow/predicate [::represent? :dat.view/represent]
+                       :flow/short-circuit? true}
+                      {:flow/from :dat.view/router
+                       :flow/to [:dat.view.represent/default]
+                       :flow/predicate ::always
+                       :flow/short-circuit? true}]}}))
 
 (defn init-job [{:as sim :keys [onyx.core/job]}]
   (assoc
@@ -624,9 +1003,10 @@
 
 (def base-ui
   (into
-    control-catalog
+    (into control-catalog verbose-hello-world)
     [(init-job hello-sim)
      (init-job render-sim)
+     (init-job verbose-sim)
      (make-sim
        :name :flow-short-circuit
        :job onyx.sim.examples.flow-short-circuit/job
@@ -634,7 +1014,7 @@
        :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job))
      {:onyx/name :onyx.sim/settings
       :onyx.sim/selected-view :onyx.sim/selected-env
-      :onyx.sim/selected-env [:onyx/name :render-example-env]}]))
+      :onyx.sim/selected-env [:onyx/name :verbose-sim]}]))
 
 (defn selected-sim [conn]
   (let [{{:keys [:db/id]} :onyx.sim/selected-env} (pull conn '[:onyx.sim/selected-env] [:onyx/name :onyx.sim/settings])]

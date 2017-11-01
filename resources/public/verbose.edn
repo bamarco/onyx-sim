@@ -1,0 +1,4 @@
+[
+  {:dat.view/route :dat.view/index}
+;;   {:dat.view/route :dat.view/hello-world}
+  ]
