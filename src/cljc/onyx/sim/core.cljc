@@ -957,7 +957,7 @@
     default-sim
     {:onyx/type :onyx.sim/sim
      :onyx/name :verbose-sim
-     :onyx.sim/title "New Route Sim"
+     :onyx.sim/title "Verbose Method Sim"
      :onyx.sim/description "Verbose Layout Method"
      :onyx.core/job {:onyx/type :onyx.core/job
                      :onyx.core/catalog verbose-catalog
