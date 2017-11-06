@@ -42,45 +42,6 @@
       env
       outputs)))
 
-(defn process-segments! [env segments]
-  (reduce
-    (fn [env {:as segment :keys [dat.view/mount-point]}]
-      (-> env
-          (update-in [:dat.view/in-flight mount-point] inc)
-          (onyx/new-segment :dat.view/render segment)
-          (mount-outputs!)))
-    env
-    (distinct segments)))
-
-;; (defn go-mounts! [conn sim-id mount-chan]
-;;   (go-loop
-;;     []
-;;     (let [segments (!<chunk-of mount-chan)]
-;;       (d/transact! conn [[:db.fn/call pull-and-transition-env sim-id #(process-segments! % segments)]])
-;;       (recur))))
-
-;; (defn found-ouputs [mount-chan]
-;;   ;; ***TODO: make mount-chan a value for :onyx.sim/mount-chan
-;;   (put! mount-chan {:dat.view/output-available true}))
-
-(defn sync-mounts! [env]
-  (doseq [[out-task outputs] (onyx/out env)]
-;;     (log/info "syncing mounts for" out-task)
-    (doseq [{:keys [dat.view/mount-point dat.view/component]} outputs]
-      (when mount-point;;(and mount-point (not (= @mount-point component)))
-        (log/info "mounting component")
-        ;; ???:
-        ;; 1. check queue <!
-        ;; 2. if there are any take the latest and drop the rest. mark the mount as processing
-        ;; 3. if there aren't any mark the mount as latest
-        ;; 4. if the outbox has two: noop on equality, take the latest if different.
-        ;; - increment mount counter by one.
-        ;; - clear out old mounts
-        ;; -
-
-        (reset! mount-point component))))
-  env)
-
 (defn pull-and-transition-env [db sim-id transition-or-transitions]
   (let [transitions (if (fn? transition-or-transitions)
                       [transition-or-transitions]
@@ -100,7 +61,7 @@
       (if (= tick-count 0)
         [;[:db/remove id :onyx.sim/pause-count pause-count]
          [:db/add id :onyx.sim/pause-count next-pause-count]]
-        (pull-and-transition-env db id (cons (repeat tick-count onyx/tick) sync-mounts!)))
+        (pull-and-transition-env db id (repeat tick-count onyx/tick)))
       (catch #?(:clj Error :cljs :default) e
         [[:db/add id :onyx.sim/debugging? true]]))))
 
@@ -130,7 +91,7 @@
     (for [[id running? speed] sims]
       (when running?
         ;; TODO: speed
-        (pull-and-transition-env db id [onyx/tick sync-mounts!]))))))
+        (pull-and-transition-env db id onyx/tick))))))
 
 (defmethod intent
   :onyx.sim.control/env-style
