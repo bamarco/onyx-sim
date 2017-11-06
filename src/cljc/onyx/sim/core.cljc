@@ -221,12 +221,15 @@
 (defn pull-job [conn sim-id]
   (:onyx.core/job (d/pull @conn '[{:onyx.core/job [{:onyx.core/catalog [*]} *]}] sim-id)))
 
+(defn pull-clean-env [conn sim-id]
+  (:onyx.sim/clean-env (pull conn '[:onyx.sim/clean-env] sim-id)))
+
 (defn render-segment [conn sim-id seg]
   (log/info "rendering seg" seg)
-  ;; TODO: it's looping infinitely. options:
-  ;;       - easiest worst performant: init a fresh instance
-  ;;       - cache a clean instance of the env
-  ;;       - asynchronously submit a job with a render-id and fill back in the result with a wait and replace object
+  ;; Ways to render:
+  ;;  - easiest worst performant: init a fresh instance
+  ;;  - cache a clean instance of the env
+  ;;  - asynchronously submit a job with a render-id and fill back in the result with a wait and replace object
   (let [;;env (pull-env conn sim-id)
         env (-> (pull-job conn sim-id)
                 ds->onyx
@@ -243,15 +246,83 @@
         first
         :dat.view/component)))
 
+(defn render-segment2 [conn sim-id seg]
+  (log/info "rendering seg" seg)
+  (let [env (pull-clean-env conn sim-id)
+        _ (log/info "env" (keys env))
+         drained-env (-> env
+                         (onyx/new-segment :dat.view/render seg)
+                         onyx/drain)
+         ]
+;;     (log/info "clean env" (:dat.view/component (first (:outputs (:dat.view/mount2 (:tasks drained-env))))))
+    (-> drained-env
+        :tasks
+        :dat.view/mount2
+        :outputs
+        first
+        :dat.view/component)))
+
+;; (defn render-segments [conn sim-id segs]
+;;   (log/info "rendering segs" segs)
+;;   (let [env (pull-clean-env conn sim-id)
+;;         drained-env (-> (reduce #(onyx/new-segment %1 :dat.view/render %2) env segs)
+;;                         onyx/drain)]
+;;     (mapv
+;;       :dat.view/component
+;;       (-> drained-env
+;;           :tasks
+;;           :dat.view/mount2
+;;           :outputs))))
+
+(defn render-segments->debug-sim [db parent-sim-id segs child-name]
+  (let [parent-sim (d/entity db parent-sim-id)]
+    (log/info "parent job" (:onyx.core/job parent-sim))
+  [(into
+     default-sim
+     {:onyx.sim/title child-name
+      :onyx/type :onyx.sim/sim
+      :onyx.core/job (get-in parent-sim [:onyx.core/job :db/id])
+      :onyx.sim/env (reduce #(onyx/new-segment %1 :dat.view/render %2) (:onyx.sim/clean-env parent-sim) segs)
+      :onyx.sim/clean-env (:onyx.sim/clean-env parent-sim)})]))
+
+(defn submit-segment [db sim-id seg mount-point]
+  (let [tagged-segment
+         (assoc
+           seg
+           :dat.view/mount-point mount-point)]
+    ;; This should queue up segments. only take the latest unique segment. hard to do since posh is hiding data from me.
+    ;; could possibly fix it in event.cljc sync-mounts!
+
+    (event/pull-and-transition-env db sim-id #(onyx/new-segment % :dat.view/render tagged-segment))))
+
+;; (defn async-render-segment [conn sim-id seg]
+;;   ;; ???: Need a reliable way to submit segments asynchronously for reprocessing when they update.
+;;   ;; note: d/with works because it is calling synchronously
+;;   (let [mount-point (atom {:dat.view/mount-count 0
+;;                            :dat.view/component [:p (str "loading " seg "...")]})]
+;;     (d/transact! conn [[:db.fn/call submit-segment sim-id seg mount-point]])
+;;     ;; so when transactions are happening the ratoms from router and subscribe in posh are not firing. Causes could be:
+;;     ;; - this^ transact! statement calls the fn submit-segment asynchronously once. the segment needs to be told to reprocess when posh fires a react event. But it needs to differentiate between a reaction that is cause by finishing a run through the simulator and a reaction caused by posh or it will loop infinitely or only update the once.
+;;     (fn [conn sim-id seg]
+;;       (let [{:keys [dat.view/mount-count dat.view/component]} @mount-point]
+;;         (when (in-ouputs @conn)
+;;           (async/put! render> seg))
+;;         component))))
+
 (defn ^:export dat-view-box [{:keys [dat.sync/conn]}
                              {:as seg :keys [dat.view/direction dat.view/layout dat.view/style]}]
   (log/info "dat-view-box" layout)
   (let [sim-id [:onyx/name :verbose-sim]
-        children (mapv
+        children (map
                    (fn [item]
                      (log/info "render-segment" (render-segment conn sim-id item))
                      [render-segment conn sim-id item])
-                   layout)]
+                   layout)
+;;         async-children (map
+;;                     (fn [seg]
+;;                       [async-render-segment conn sim-id seg])
+;;                     layout)
+        ]
     ;; FIXME: hardcoded sim-id
     (assoc
       seg
@@ -260,7 +331,34 @@
          :horizontal flui/h-box
          flui/v-box)
        :style style
-       :children children])))
+       :children (vec children)])))
+
+(defn dat-view-box-actual [{:keys [dat.sync/conn]}
+                           {:as seg :keys [dat.view/direction dat.view/layout dat.view/style]}]
+  (log/info "dat-view-box2" layout)
+  (let [sim-id [:onyx/name :verbose-sim]
+        children (map
+                   (fn [item]
+                     (log/info "render-segment" (render-segment conn sim-id item))
+                     [render-segment2 conn sim-id item])
+                   layout)]
+    ;; FIXME: hardcoded sim-id
+    [flui/v-box
+     :children
+     [[flui/button
+       :label "Convert to Simulator"
+       :on-click #(d/transact! conn [[:db.fn/call render-segments->debug-sim sim-id layout "Spawned Sim"]])]
+      [(case direction
+         :horizontal flui/h-box
+         flui/v-box)
+       :style style
+       :children (vec children)]]]))
+
+(defn ^:export dat-view-box2 [sys seg]
+  (assoc
+    seg
+    :dat.view/component
+    [dat-view-box-actual sys seg]))
 
 (defn ^:export dat-view-label [sys {:as seg :keys [dat.view/label]}]
   (assoc
@@ -268,15 +366,31 @@
     :dat.view/component
     [flui/label :label label]))
 
+(defn ^:export dat-view-text-input [{:as sys :keys [dat.view/dispatch!]} {:as seg :keys [dat.view/label dat.view/event]}]
+  (assoc
+    seg
+    :dat.view/component
+    [flui/input-text
+     :model label
+     :on-change (partial dispatch! event)]))
+
 (defn ^:export dat-view-default [seg]
   (assoc
     seg
     :dat.view/component
     [flui/p (str "Unknown representation:" seg)]))
 
-(defn ^:export dat-view-router [{:keys [dat.sync/conn]} {:keys [dat.view/route db/id]}]
+(defn ^:export dat-view-router [{:keys [dat.sync/conn]} {:as seg :keys [dat.view/route db/id]}]
   (log/info "Routing (or " id route ")")
-  (pull conn '[*] (or id [:dat.view/route route])))
+  (into
+    seg
+    (pull conn '[*] (or id [:dat.view/route route]))))
+
+(defn ^:export dat-view-pull [{:as sys :keys [dat.sync/conn]} {:as seg :keys [dat.view/pull-expr dat.view/entity]}]
+  (into
+    seg
+    (when pull-expr
+      (pull conn pull-expr entity))))
 
 (defn with-subscriptions [system {:as seg :keys [dat.view/subscription]}]
   (into
@@ -850,12 +964,25 @@
 (def verbose-hello-world
    [{:dat.view/route :dat.view/hello-world
      :dat.view/represent :dat.view.represent/label
-     :dat.view/label "Hello World!"}
+     :dat.view/label "Hello, World!"}
+    {:dat.view/route :dat.view/bye-world
+     :dat.view/represent :dat.view.represent/text-input
+     :dat.view/event {:dat.view/handler ::simple-value
+                      :dat.view/entity [:dat.view/route :dat.view/bye-world]
+                      :dat.view/attr :dat.view/label}
+     :dat.view/label "Goodbye, World!"}
+    {:dat.view/route :dat.view/bye-world2
+     :dat.view/subscribe :dat.view.subscribe/pull
+     :dat.view/represent :dat.view.represent/label
+     :dat.view/pull-expr [:dat.view/label]
+     :dat.view/entity [:dat.view/route :dat.view/bye-world]}
     {:dat.view/route :dat.view/index
      :dat.view/style {:background-color sim-dark-tan}
      :dat.view/direction :vertical
      :dat.view/represent :dat.view.represent/box
-     :dat.view/layout [[:dat.view/route :dat.view/hello-world]]}
+     :dat.view/layout [[:dat.view/route :dat.view/hello-world]
+                       [:dat.view/route :dat.view/bye-world]
+                       [:dat.view/route :dat.view/bye-world2]]}
 
 ;;     {:dat.view/route :onyx.sub/top-bar
 ;;      :e/order 0
@@ -926,11 +1053,19 @@
     :onyx/batch-size onyx-batch-size}
    {:onyx/name :dat.view.represent/box
     :onyx/type :function
-    :onyx/fn ::dat-view-box
+    :onyx/fn ::dat-view-box2
     :onyx/batch-size onyx-batch-size}
    {:onyx/name :dat.view.represent/label
     :onyx/type :function
     :onyx/fn ::dat-view-label
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view.subscribe/pull
+    :onyx/type :function
+    :onyx/fn ::dat-view-pull
+    :onyx/batch-size onyx-batch-size}
+   {:onyx/name :dat.view.represent/text-input
+    :onyx/type :function
+    :onyx/fn ::dat-view-text-input
     :onyx/batch-size onyx-batch-size}
    {:onyx/name :dat.view.represent/default
     :onyx/type :function
@@ -941,17 +1076,6 @@
     :onyx.sim/render sim-render
     :onyt/batch-size onyx-batch-size}])
 
-(def verbose-lifecycles
-  [{:lifecycle/task :dat.view/router
-    :lifecycle/calls ::dat-view-lifecycle
-    :onyx.sim/system :onyx.sim.system/system}
-   {:lifecycle/task :dat.view.represent/box
-    :lifecycle/calls ::dat-view-lifecycle
-    :onyx.sim/system :onyx.sim.system/system}
-   {:lifecycle/task :dat.view.represent/label
-    :lifecycle/calls ::dat-view-lifecycle
-    :onyx.sim/system :onyx.sim.system/system}])
-
 (def verbose-sim
   (into
     default-sim
@@ -961,36 +1085,63 @@
      :onyx.sim/description "Verbose Layout Method"
      :onyx.core/job {:onyx/type :onyx.core/job
                      :onyx.core/catalog verbose-catalog
-                     :onyx.core/lifecycles verbose-lifecycles
+
+                     :onyx.core/lifecycles
+                     [{:lifecycle/task :dat.view/router
+                       :lifecycle/calls ::dat-view-lifecycle
+                       :onyx.sim/system :onyx.sim.system/system}
+                      {:lifecycle/task :dat.view.represent/box
+                       :lifecycle/calls ::dat-view-lifecycle
+                       :onyx.sim/system :onyx.sim.system/system}
+                      {:lifecycle/task :dat.view.represent/label
+                       :lifecycle/calls ::dat-view-lifecycle
+                       :onyx.sim/system :onyx.sim.system/system}
+                      {:lifecycle/task :dat.view.subscribe/pull
+                       :lifecycle/calls ::dat-view-lifecycle
+                       :onyx.sim/system :onyx.sim.system/system}
+                      {:lifecycle/task :dat.view.represent/text-input
+                       :lifecycle/calls ::dat-view-lifecycle
+                       :onyx.sim/system :onyx.sim.system/system}]
+
                      :onyx.core/workflow
                      [[:dat.view/render :dat.view/router]
-                      [:dat.view/router :dat.view.represent/box]
-                      [:dat.view/router :dat.view.represent/label]
-                      [:dat.view/router :dat.view.represent/default]
+                      [:dat.view/router :dat.view.subscribe/pull]
+                      [:dat.view.subscribe/pull :dat.view.represent/box]
+                      [:dat.view.subscribe/pull :dat.view.represent/label]
+                      [:dat.view.subscribe/pull :dat.view.represent/text-input]
+                      [:dat.view.subscribe/pull :dat.view.represent/default]
                       [:dat.view.represent/default :dat.view/mount2]
                       [:dat.view.represent/label :dat.view/mount2]
+                      [:dat.view.represent/text-input :dat.view/mount2]
                       [:dat.view.represent/box :dat.view/mount2]]
 
                      :onyx.core/flow-conditions
-                     [{:flow/from :dat.view/router
+                     [{:flow/from :dat.view.subscribe/pull
                        :flow/to [:dat.view.represent/box]
                        :dat.view/represent :dat.view.represent/box
                        :flow/predicate [::represent? :dat.view/represent]
                        :flow/short-circuit? true}
-                      {:flow/from :dat.view/router
+                      {:flow/from :dat.view.subscribe/pull
                        :flow/to [:dat.view.represent/label]
                        :dat.view/represent :dat.view.represent/label
                        :flow/predicate [::represent? :dat.view/represent]
                        :flow/short-circuit? true}
-                      {:flow/from :dat.view/router
+                      {:flow/from :dat.view.subscribe/pull
+                       :flow/to [:dat.view.represent/text-input]
+                       :dat.view/represent :dat.view.represent/text-input
+                       :flow/predicate [::represent? :dat.view/represent]
+                       :flow/short-circuit? true}
+                      {:flow/from :dat.view.subscribe/pull
                        :flow/to [:dat.view.represent/default]
                        :flow/predicate ::always
                        :flow/short-circuit? true}]}}))
 
 (defn init-job [{:as sim :keys [onyx.core/job]}]
-  (assoc
-    sim
-    :onyx.sim/env (onyx/init (ds->onyx job))))
+  (let [env (onyx/init (ds->onyx job))]
+    (assoc
+      sim
+      :onyx.sim/env env
+      :onyx.sim/clean-env env)))
 
 (defn make-sim [& {:as options}]
   (init-job
@@ -1205,7 +1356,6 @@
     (let [sims (q '[:find ?title ?sim
                     :in $
                     :where
-                    [?sim :onyx/name ?sim-name] ;; ???: needed?
                     [?sim :onyx.sim/title ?title]
                     [?sim :onyx/type :onyx.sim/sim]] conn)
           sims (for [[nam id] sims]
@@ -1216,7 +1366,9 @@
       :label [:i {:class "zmdi zmdi-settings"}]}]
       sims
     [{:id :sims
-      :label [:i {:class "zmdi zmdi-widgets"}]}])))
+      :label [:i {:class "zmdi zmdi-widgets"}]}
+     {:id :debug-conn
+      :label [:i {:class "zmdi zmdi-assignment"}]}])))
 
 (defn ^:export sorted-tasks [conn]
   (let [{{:keys [sorted-tasks]} :onyx.sim/env
@@ -1233,9 +1385,8 @@
 (defn ^:export any-running? [conn]
   ;; FIXME: rewrite query to use or-aggregation
   (let [sims (q '[:find ?title ?sim ?running
-                    :in $
-                    :where
-                    [?sim :onyx/name ?sim-name]
+                  :in $
+                  :where
                   [?sim :onyx.sim/title ?title]
                   [?sim :onyx/type :onyx.sim/sim]
                   [?sim :onyx.sim/running? ?running]] conn)
@@ -1306,6 +1457,20 @@
            (flui/p description)]))
       [(flui/p "TODO: + Simulator")]))))
 
+(defn debug-conn [conn]
+  (let [ssim-id (q '[:find ?sim .
+                         :in $
+                         :where
+                         [?sim :onyx/type :onyx.sim/sim]
+                         [?sim :onyx.sim/title "Spawned Sim"]] conn)
+        spawned-sim (pull conn [:onyx.sim/title :onyx.core/job] ssim-id)]
+    [flui/v-box
+     :children
+     [[flui/p
+       (str spawned-sim)]
+      [flui/p
+       (str spawned-sim)]]]))
+
 (defn settings [conn]
   (flui/v-box
     :children
@@ -1329,6 +1494,11 @@
   :settings
   [conn _]
   [settings conn])
+
+(defmethod display-selected
+  :debug-conn
+  [conn _]
+  [debug-conn conn])
 
 (defmethod display-selected
   :sims
