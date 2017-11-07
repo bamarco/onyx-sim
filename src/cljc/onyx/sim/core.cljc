@@ -272,7 +272,7 @@
      :control/choices (::sorted-tasks)
      :control/show? (:onyx.sim.control/control-attr :onyx.sim/hidden? :control/toggled?)
      :control/id-fn :onyx/name
-     :control/label-fn :onyx/name}])
+     :control/label-fn (::task-labeler)}])
 
 (def ds-schema
   {:onyx.core/catalog {:db/type :db.type/ref
@@ -287,10 +287,6 @@
    :onyx.core/job {:db/type :db.type/ref}
    :onyx.sim/selected-env {:db/type :db.type/ref}
    :onyx.sim/env {:db/type :db.type/ref}})
-
-(defn ^:export tick-action [{:as seg :keys [db/id onyx.sim/running?]}]
-  {:control/action [[:db.fn/call onyx/tick id]]
-   :control/disabled? running?})
 
 ;;;
 ;;; Lifecycles
@@ -516,6 +512,13 @@
        ])))
 
 ;;; control-fns
+(defn ^:export tick-action [{:as seg :keys [db/id onyx.sim/running?]}]
+  {:control/action [[:db.fn/call onyx/tick id]]
+   :control/disabled? running?})
+
+(defn ^:export task-labeler [conn]
+  #(-> % :onyx/name pr-str))
+
 (defn ^:export selected-view [conn]
   (let [{:keys [:onyx.sim/selected-view]} (pull conn '[:onyx.sim/selected-view] [:onyx/name :onyx.sim/settings])]
     selected-view))
