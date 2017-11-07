@@ -1,16 +1,21 @@
 (ns onyx.sim.components.ui
   (:require [com.stuartsierra.component :as component]
+            [taoensso.timbre :as log]
             [reagent.core :as reagent]
             [posh.reagent :as p]
             [onyx.sim.core :as sim]
             [onyx.sim.api :as onyx]
             [datascript.core :as ds]
+            [onyx.sim.dat-view :as dat.view]
             [dat.sync.db :as d]))
 
 (defn create-conn []
   (let [conn (ds/create-conn sim/ds-schema)]
     (p/posh! conn)
     (d/transact! conn sim/base-ui)
+    (d/transact! conn (dat.view/example))
+    (d/transact! conn [(dat.view/simulator)
+                       [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-env [:onyx/name :dat.view/sim]]])
     conn))
 
 (defn create-dispatcher [conn]
