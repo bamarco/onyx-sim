@@ -11,6 +11,7 @@
             [datascript.core :as d]
             [onyx.sim.catalog]
             [onyx.sim.examples.flow-short-circuit]
+            [onyx.sim.examples.hello]
             #?(:cljs [posh.reagent :as posh])
             #?(:cljs [reagent.core :as r :refer [atom]])))
 
@@ -52,6 +53,21 @@
                                 :onyc.core/metadata        :metadata
                                 :onyx.core/flow-conditions :flow-conditions})))
 
+(defn init-segments [{:as sim :keys [onyx.sim/env onyx.sim/inputs]}]
+  (if-not inputs
+    sim
+    (assoc
+      sim
+      :onyx.sim/env
+      (reduce
+        (fn [env [task-name segments]]
+          (reduce
+            #(onyx/new-segment %1 task-name %2)
+            env
+            segments))
+        env
+        inputs))))
+
 (defn init-job [{:as sim :keys [onyx.core/job]}]
   (let [env (onyx/init (ds->onyx job))]
     (assoc
@@ -60,13 +76,16 @@
       :onyx.sim/clean-env env)))
 
 (defn make-sim [& {:as options}]
-  (init-job
+  (->
     (into
       default-sim
       (clojure.set/rename-keys options {:job :onyx.core/job
                                         :name :onyx/name
                                         :title :onyx.sim/title
-                                        :description :onyx.sim/description}))))
+                                        :description :onyx.sim/description
+                                        :inputs :onyx.sim/inputs}))
+    init-job
+    init-segments))
 (def q
   #?(:cljs
       (comp deref posh/q)
@@ -345,38 +364,21 @@
 ;;;
 ;;; Simulator Examples
 ;;;
-(defn ^:export hello [seg]
-  (assoc seg :hello-msg "Hello, world!"))
-
-(def hello-sim
-  (make-sim
-    :name ::hello-sim
-    :title "Hello Sim!"
-    :description "Simulation Example."
-    :job {:onyx/type :onyx.core/job
-          :onyx.core/catalog [{:onyx/name :in
-                               :onyx/type :input
-                               :onyx/batch-size onyx-batch-size}
-                              {:onyx/name :out
-                               :onyx/type :output
-                               :onyx/batch-size onyx-batch-size}
-                              {:onyx/name :hello
-                               :onyx/type :function
-                               :onyx/fn ::hello
-                               :onyx/batch-size onyx-batch-size}]
-          :onyx.core/workflow [[:in :hello] [:hello :out]]
-          ;;                      :onyx.core/flow-conditions []
-          }))
-
 (def base-ui
   (into
     control-catalog
-    [hello-sim
+    [(make-sim
+       :name ::hello-sim
+       :title "Hello Sim!"
+       :description (:onyx/doc onyx.sim.examples.hello/job)
+       :job onyx.sim.examples.hello/job
+       :inputs {:in onyx.sim.examples.hello/input-segments})
      (make-sim
        :name :flow-short-circuit
        :job onyx.sim.examples.flow-short-circuit/job
        :title "Flow Short Circuit"
-       :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job))
+       :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job)
+       :inputs {:in onyx.sim.examples.flow-short-circuit/input-segments})
      {:onyx/name :onyx.sim/settings
       :onyx.sim/selected-view :onyx.sim/selected-env
       :onyx.sim/selected-env [:onyx/name ::hello-sim]}]))
