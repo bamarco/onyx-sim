@@ -332,7 +332,10 @@
     :name :dat.view/sim
     :title "Dat View Simulator"
     :description "This will simulate the compute graph for dat view."
-    :job (job)))
+    :job (job)
+    :inputs {:dat.view/render
+             [{:dat.view/route :dat.view.route/index}
+              {:dat.view/route :dat.view.route/todos}]}))
 
 (def todos-query
   '[:find ?todo

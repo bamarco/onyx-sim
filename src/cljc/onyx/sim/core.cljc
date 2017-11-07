@@ -86,6 +86,7 @@
                                         :inputs :onyx.sim/inputs}))
     init-job
     init-segments))
+
 (def q
   #?(:cljs
       (comp deref posh/q)
