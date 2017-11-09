@@ -19,29 +19,16 @@
                        [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-env [:onyx/name :dat.view/sim]]])
     conn))
 
-(defn create-dispatcher [conn]
-  (fn [{:as event :keys [dat.view/handler]} & inputs]
-    (d/transact!
-      conn
-      [[:db.fn/call
-        (onyx/kw->fn handler)
-        (assoc
-          event
-          :dat.view/inputs inputs)]])))
-
-(defrecord KnowledgeBase [conn dispatch!]
+(defrecord KnowledgeBase [conn]
   component/Lifecycle
   (start
     [component]
-    (let [conn (or conn (create-conn))
-          dispatch! (or dispatch! (create-dispatcher conn))]
+    (let [conn (or conn (create-conn))]
       (assoc component
-        :conn conn
-        :dispatch! dispatch!)))
+        :conn conn)))
   (stop [component]
     (assoc component
-      :conn nil
-      :dispatch! nil)))
+      :conn nil)))
 
 (defn new-knowledge-base []
   (map->KnowledgeBase {}))

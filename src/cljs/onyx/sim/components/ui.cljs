@@ -9,6 +9,9 @@
             [onyx.sim.dat-view :as dat.view]
             [dat.sync.db :as d]))
 
+;; ???: Can onyx sim have a resource map that allows it to inject resources into incoming segments and/or the lifecycle map? Maybe render segment takes in resources?
+;; ???: Should there be some kind of asynchronous job runner that caches compiled jobs? If so how do we get async to interface with react?
+
 (defn show-ui [conn]
   (let [debug true]
     (if debug
