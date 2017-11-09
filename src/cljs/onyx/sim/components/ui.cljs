@@ -9,42 +9,28 @@
             [onyx.sim.dat-view :as dat.view]
             [dat.sync.db :as d]))
 
-(defn create-conn []
-  (let [conn (ds/create-conn sim/ds-schema)]
-    (p/posh! conn)
-    (d/transact! conn sim/base-ui)
-    (d/transact! conn (dat.view/example))
-    (d/transact! conn [(dat.view/simulator)
-                       [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-env [:onyx/name :dat.view/sim]]])
-    conn))
-
-(defn create-dispatcher [conn]
-  (fn [{:as event :keys [dat.view/handler]} & inputs]
-    (d/transact!
-      conn
-      [[:db.fn/call
-        (onyx/kw->fn handler)
-        (assoc
-          event
-          :dat.view/inputs inputs)]])))
-
 (defn show-ui [conn]
-  [sim/sim-selector conn])
+  (let [debug true]
+    (if debug
+      [sim/sim-selector {:dat.sync.db/conn conn}]
+      [:div
+       [dat.view/render-segment
+        {:dat.sync.db/conn conn
+         :onyx.sim/sim [:onyx/name :dat.view/sim]
+         :dat.view/route :dat.view.route/todos}]
+       [dat.view/render-segment
+        {:dat.sync.db/conn conn
+         :onyx.sim/sim [:onyx/name :dat.view/sim]
+         :dat.view/route :dat.view.route/index}]])))
 
-(defrecord UIComponent [conn dispatch!]
+(defrecord UIComponent [knowbase]
   component/Lifecycle
   (start
     [component]
-    (let [conn (or conn (create-conn))
-          dispatch! (or dispatch! (create-dispatcher conn))]
-      (reagent/render [show-ui conn] (js/document.getElementById "app"))
-      (assoc component
-        :conn conn
-        :dispatch! dispatch!)))
+      (reagent/render [show-ui (:conn knowbase)] (js/document.getElementById "app"))
+    component)
   (stop [component]
-    (assoc component
-      :conn nil
-      :dispatch! nil)))
+    component))
 
 (defn new-ui-component []
   (map->UIComponent {}))

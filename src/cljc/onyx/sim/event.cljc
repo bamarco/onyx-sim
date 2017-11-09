@@ -137,7 +137,7 @@
 
 (defmethod intent
   :onyx.api/new-segment
-  [db {:keys [:onyx.sim/sim :onyx.sim/task-name :onyx.sim/segment]}]
+  [db {:keys [onyx.sim/sim onyx.sim/task-name onyx.sim/segment]}]
   (pull-and-transition-env db sim #(onyx/new-segment % task-name segment)))
 
 (defmethod intent
