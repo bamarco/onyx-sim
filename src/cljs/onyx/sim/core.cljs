@@ -67,39 +67,39 @@
 
 (def ds->onyx onyx/ds->onyx)
 
-(defn init-segments [{:as sim :keys [onyx.sim/env onyx.sim/inputs]}]
-  (if-not inputs
-    sim
-    (assoc
-      sim
-      :onyx.sim/env
-      (reduce
-        (fn [env [task-name segments]]
-          (reduce
-            #(onyx/new-segment %1 task-name %2)
-            env
-            segments))
-        env
-        inputs))))
+;; (defn init-segments [{:as sim :keys [onyx.sim/env onyx.sim/inputs]}]
+;;   (if-not inputs
+;;     sim
+;;     (assoc
+;;       sim
+;;       :onyx.sim/env
+;;       (reduce
+;;         (fn [env [task-name segments]]
+;;           (reduce
+;;             #(onyx/new-segment %1 task-name %2)
+;;             env
+;;             segments))
+;;         env
+;;         inputs))))
 
-(defn init-job [{:as sim :keys [onyx.core/job]}]
-  (let [env (onyx/init (ds->onyx job))]
-    (assoc
-      sim
-      :onyx.sim/env env
-      :onyx.sim/clean-env env)))
+;; (defn init-job [{:as sim :keys [onyx.core/job]}]
+;;   (let [env (onyx/init (ds->onyx job))]
+;;     (assoc
+;;       sim
+;;       :onyx.sim/env env
+;;       :onyx.sim/clean-env env)))
 
-(defn make-sim [& {:as options}]
-  (->
-    (into
-      default-sim
-      (clojure.set/rename-keys options {:job :onyx.core/job
-                                        :name :onyx/name
-                                        :title :onyx.sim/title
-                                        :description :onyx.sim/description
-                                        :inputs :onyx.sim/inputs}))
-    init-job
-    init-segments))
+;; (defn make-sim [& {:as options}]
+;;   (->
+;;     (into
+;;       default-sim
+;;       (clojure.set/rename-keys options {:job :onyx.core/job
+;;                                         :name :onyx/name
+;;                                         :title :onyx.sim/title
+;;                                         :description :onyx.sim/description
+;;                                         :inputs :onyx.sim/inputs}))
+;;     init-job
+;;     init-segments))
 
 (defn make-sim2 [& {:as options}]
   (->
@@ -114,7 +114,7 @@
 (defn pull-q [pull-expr query conn & input]
   (map (fn [[eid]] @(posh/pull conn pull-expr eid)) @(apply posh/q query conn input)))
 
-;; ***TODO: use with new dat view represent
+;; TODO: use with new dat view represent
 (def new-setting-catalog
   [{:db/valueType :db.type/ref
     :e/type :e.type/type
@@ -189,7 +189,7 @@
     :dat.view/alias {:dat.view/selected [:new-sim.sub/settings :new-sim/env-display-style]
                      :dat.view/option [:new-sim.sub/pretty-env]}}
    {:onyx/name :new-sim.sub/render-segments?
-    :dat.view/value {:e/order 6} ;; ***TODO: option/selected for multi-cardinality
+    :dat.view/value {:e/order 6} ;; TODO: option/selected for multi-cardinality
     :dat.view/alias {:dat.view/option [:new-sim.sub/settings :new-sim/env-display-option]
                      :dat.view/selected []}}
    {:onyx/name :new-sim.sub/raw?
@@ -255,9 +255,7 @@
      :control/choices [{:id :pretty-env
                         :e/order 0
                         :label "Pretty"
-                        :e/name "Pretty"
-
-                        }
+                        :e/name "Pretty"}
                        {:id :raw-env
                         :e/order 1
                         :label "Raw"
@@ -306,7 +304,7 @@
      :control/name :onyx.sim/hidden-tasks
      :control/label "Hidden Tasks"
      :control/chosen (::hidden-tasks)
-     :control/choose (::hide-tasks)
+;;      :control/choose (::hide-tasks)
      ;; TODO***:
      :dat.view/event {:dat.view/handler :onyx.sim.event/hide-tasks}
      :control/choices (::sorted-tasks)
@@ -425,24 +423,24 @@
 ;;;
 ;;; Simulator Examples
 ;;;
-(def base-ui
-  (into
-    control-catalog
-    [(make-sim
-       :name ::hello-sim
-       :title "Hello Sim!"
-       :description (:onyx/doc onyx.sim.examples.hello/job)
-       :job onyx.sim.examples.hello/job
-       :inputs {:in onyx.sim.examples.hello/input-segments})
-     (make-sim
-       :name :flow-short-circuit
-       :job onyx.sim.examples.flow-short-circuit/job
-       :title "Flow Short Circuit"
-       :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job)
-       :inputs {:in onyx.sim.examples.flow-short-circuit/input-segments})
-     {:onyx/name :onyx.sim/settings
-      :onyx.sim/selected-view :onyx.sim/selected-sim
-      :onyx.sim/selected-sim [:onyx/name ::hello-sim]}]))
+;; (def base-ui
+;;   (into
+;;     control-catalog
+;;     [(make-sim
+;;        :name ::hello-sim
+;;        :title "Hello Sim!"
+;;        :description (:onyx/doc onyx.sim.examples.hello/job)
+;;        :job onyx.sim.examples.hello/job
+;;        :inputs {:in onyx.sim.examples.hello/input-segments})
+;;      (make-sim
+;;        :name :flow-short-circuit
+;;        :job onyx.sim.examples.flow-short-circuit/job
+;;        :title "Flow Short Circuit"
+;;        :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job)
+;;        :inputs {:in onyx.sim.examples.flow-short-circuit/input-segments})
+;;      {:onyx/name :onyx.sim/settings
+;;       :onyx.sim/selected-view :onyx.sim/sim-view
+;;       :onyx.sim/selected-sim [:onyx/name ::hello-sim]}]))
 
 (def base-ui2
   (into
@@ -469,14 +467,14 @@
        :sim [:onyx/name :flow-short-circuit]}]
      [:onyx.sim.api/transition
       {:event :onyx.sim.api/inputs
-       :sim :flow-short-circuit
+       :sim [:onyx/name :flow-short-circuit]
        :inputs {:in onyx.sim.examples.flow-short-circuit/input-segments}}]
      {:onyx/name :onyx.sim/settings
-      :onyx.sim/selected-view :onyx.sim/selected-sim
+      :onyx.sim/selected-view :onyx.sim/sim-view
       :onyx.sim/selected-sim [:onyx/name ::hello-sim]}]))
 
 (defn selected-sim [conn]
-  (let [{{:keys [:db/id]} :onyx.sim/selected-sim} @(posh/pull conn '[:onyx.sim/selected-sim] [:onyx/name :onyx.sim/settings])]
+  (let [{{:keys [db/id]} :onyx.sim/selected-sim} @(posh/pull conn '[:onyx.sim/selected-sim] [:onyx/name :onyx.sim/settings])]
     id))
 
 ;;
@@ -540,7 +538,6 @@
         render-fn (if render-segments?
                     (or local-render render code-render)
                     code-render)]
-    (log/info "env!!!" env)
     [flui/v-box
       :class "onyx-task onyx-panel"
       :gap ".25rem"
@@ -571,13 +568,13 @@
 
 (defn pretty-env [conn {:as seg :keys [onyx.sim/sim]}]
   (let [{:keys [sorted-tasks]} @(pull-env conn sim)
-        {hidden :onyx.sim/hidden-tasks} @(posh/pull conn '[:onyx.sim/hidden-tasks] sim)]
+        {:keys [onyx.sim/hidden-tasks]} @(posh/pull conn '[:onyx.sim/hidden-tasks] sim)]
     [flui/v-box
       :class "onyx-env"
       :children
       (into
         []
-        (for [task-name (remove (or hidden #{}) sorted-tasks)]
+        (for [task-name (remove (or hidden-tasks #{}) sorted-tasks)]
           ^{:key (:onyx/name task-name)}
           [pretty-task-box conn (assoc seg :onyx.sim/task-name task-name)]))]))
 
@@ -613,7 +610,7 @@
 
 (defn ^:export selected-nav [conn]
   (let [view (selected-view conn)]
-    (if (= view :onyx.sim/selected-sim)
+    (if (= view :onyx.sim/sim-view)
       (selected-sim conn)
       view)))
 
@@ -667,10 +664,11 @@
                         :in $
                         :where
                         [?sim :onyx.sim/title ?title]
-                        [?sim :onyx/type :onyx.sim/sim]] conn)
-          sims (for [[nam id] sims]
-                 {:id id
-                  :label nam})]
+                        [?sim :onyx/type :onyx.sim/sim]]
+                      conn)
+        sims (for [[title sim] sims]
+               {:id sim
+                :label title})]
   (cat-into
     [{:id :settings
       :label [:i {:class "zmdi zmdi-settings"}]}]
@@ -683,8 +681,8 @@
 
 (defn ^:export sorted-tasks [conn]
   (let [sim (selected-sim conn)
-        {{:keys [sorted-tasks]} (pull-env conn sim)
-         {:keys [:onyx.core/catalog]} :onyx.core/job}
+       {:keys [sorted-tasks]} @(pull-env conn sim)
+         {{:keys [onyx.core/catalog]} :onyx.core/job}
         @(posh/pull
           conn
           '[{:onyx.core/job [{:onyx.core/catalog [*]}]}]
@@ -727,8 +725,7 @@
 (defn sim-view [conn {:as seg :keys [onyx.sim/sim]}]
   [flui/v-box
    :children
-   [[:p "temp"]
-   [control/when-show?
+   [[control/when-show?
      [control/selection-list conn :onyx.sim/hidden-tasks]]
     [control/when-show?
      [control/indicator-display conn :onyx.sim/description]]
@@ -748,7 +745,7 @@
                  :where
                  [?sim :onyx/type :onyx.sim/sim]
                  ] conn)]
-  (flui/v-box
+  [flui/v-box
     :children
     (cat-into
       [(flui/title
@@ -762,7 +759,7 @@
              :level :level2
              :label title)
            (flui/p description)]))
-      [(flui/p "TODO: + Simulator")]))))
+      [(flui/p "TODO: + Simulator")])]))
 
 (defn debug-conn [conn]
   (let [the-whole-conn (ratom/make-reaction
@@ -775,7 +772,7 @@
        ])))
 
 (defn settings [conn]
-  (flui/v-box
+  [flui/v-box
     :children
     [[flui/title
          :label "Settings"
@@ -783,13 +780,13 @@
      [control/toggle-checkbox conn :onyx.sim/hidden?]
      [control/toggle-checkbox conn :onyx.sim/description?]
      [control/toggle-checkbox conn :onyx.sim/next-action?]
-     [env-style conn]]))
+     [env-style conn]]])
 
 (defmulti display-selected (fn [_ selection]
                              selection))
 
 (defmethod display-selected
-  :onyx.sim/selected-sim
+  :onyx.sim/sim-view
   [conn _]
   [sim-view conn {:onyx.sim/sim (selected-sim conn)}])
 
@@ -810,7 +807,6 @@
 
 (defn content-view [conn]
   (let [view (selected-view conn)]
-    ;; ???: bottom gap for scrolling
     [flui/box
      :class "onyx-sim"
      :child

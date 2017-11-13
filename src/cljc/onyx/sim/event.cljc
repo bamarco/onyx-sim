@@ -161,6 +161,21 @@
   [db {:keys [:onyx.sim/sim :onyx.sim/task-names]}]
   [[:db/add sim :onyx.sim/hidden-tasks task-names]])
 
+(defn hide-tasks [db {:keys [onyx.sim/sim onyx.sim/task-names]}]
+  (let [sim (or sim (:onyx.sim/selected-sim (d/entity db [:onyx/name :onyx.sim/settings])))]
+    [[:db/add sim :onyx.sim/hidden-tasks task-names]]))
+
+(defmethod intent2
+  :onyx.sim.event/hide-tasks
+  [conn event input]
+  (d/transact!
+    conn
+    [[:db.fn/call
+      hide-tasks
+      (assoc
+        event
+        :onyx.sim/task-names input)]]))
+
 (defmethod intent
   :onyx.sim.event/hide-task
   [db {:keys [:onyx.sim/sim :onyx.sim/task-name]}]
@@ -256,7 +271,7 @@
     [[:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-view selected]]
     [{:db/id [:onyx/name :onyx.sim/settings]
       :onyx.sim/selected-sim selected
-      :onyx.sim/selected-view :onyx.sim/selected-sim}]))
+      :onyx.sim/selected-view :onyx.sim/sim-view}]))
 
 (defmethod intent2
   :onyx.sim.event/select-view
@@ -267,7 +282,7 @@
       [[:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-view selected]]
       [{:db/id [:onyx/name :onyx.sim/settings]
         :onyx.sim/selected-sim selected
-        :onyx.sim/selected-view :onyx.sim/selected-sim}])))
+        :onyx.sim/selected-view :onyx.sim/sim-view}])))
 
 #?(:cljs
 (defmethod intent

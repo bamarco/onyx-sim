@@ -98,7 +98,9 @@
      :on-change (partial event/dispatch! conn event)]))
 
 (defn selection-list [conn control-name]
-  (let [{:keys [:control/label :control/choices :control/chosen :control/choose :control/id-fn :control/label-fn]} (pull-control conn control-name)]
+  (let [{:keys [control/label control/choices control/chosen dat.view/event control/id-fn control/label-fn]} (pull-control conn control-name)]
+    (log/info "selection-list" choices)
+    (log/info "selection-list" chosen)
     [flui/v-box
      :children
      [[flui/label
@@ -109,7 +111,7 @@
        :model chosen
        :id-fn id-fn
        :label-fn label-fn
-       :on-change choose]]]))
+       :on-change (partial event/dispatch! conn event)]]]))
 
 (defn indicator-label [conn control-name]
   (let [{:keys [:control/label :control/display]} (pull-control conn control-name)]
