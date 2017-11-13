@@ -16,8 +16,30 @@
                      ;; (log/debug seg "Intenting" intention)
                      intention)))
 
+(defmulti intent2 (fn [conn event inputs]
+                   (let [intention (:dat.view/handler event)]
+                     (assert intention "No :dat.view/handler set for intent.")
+                     ;; (log/debug seg "Intenting" intention)
+                     intention)))
+
 (defn dispatch [conn seg]
   (d/transact! conn [[:db.fn/call intent seg]]))
+
+;; (defn dispatch [conn seg]
+;;   (d/transact!
+;;     conn
+;;     [[:onyx.sim.api/transition seg]]
+;;     {:datascript.db/tx-middleware onyx/middleware}))
+
+(defn dispatch! [conn {:as event} & inputs]
+  (intent2 conn event inputs))
+
+(defn dispatch-transition! [conn {:as event} & inputs]
+  (d/transact!
+    conn
+    [[:onyx.sim.api/transition
+      (assoc event
+        :dat.view/inputs inputs)]]))
 
 (defn raw-dispatch [conn seg]
   ;; TODO: make a nice error for when you didn't use raw-dispatch and you should have
@@ -208,8 +230,19 @@
   (if (keyword? selected)
     [[:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-view selected]]
     [{:db/id [:onyx/name :onyx.sim/settings]
-      :onyx.sim/selected-env selected
-      :onyx.sim/selected-view :onyx.sim/selected-env}]))
+      :onyx.sim/selected-sim selected
+      :onyx.sim/selected-view :onyx.sim/selected-sim}]))
+
+(defmethod intent2
+  :onyx.sim.event/select-view
+  [conn _ [selected]]
+  (d/transact!
+    conn
+    (if (keyword? selected)
+      [[:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-view selected]]
+      [{:db/id [:onyx/name :onyx.sim/settings]
+        :onyx.sim/selected-sim selected
+        :onyx.sim/selected-view :onyx.sim/selected-sim}])))
 
 #?(:cljs
 (defmethod intent

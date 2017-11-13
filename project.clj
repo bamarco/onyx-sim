@@ -37,7 +37,9 @@
 
   :min-lein-version "2.6.1"
 
-  :source-paths ["src/clj" "src/cljs" "src/cljc"]
+  :source-paths ["src/clj" "src/cljs" "src/cljc"
+                 "checkouts/datsync/src/clj"
+                 "checkouts/datsync/src/cljc"]
 
   :test-paths ["test/clj" "test/cljc"]
 
@@ -55,7 +57,10 @@
 
   :cljsbuild {:builds
               [{:id "app"
-                :source-paths ["src/cljs" "src/cljc" "dev"]
+                :source-paths ["src/cljs" "src/cljc"
+                               "checkouts/datsync/src/cljs"
+                               "checkouts/datsync/src/cljc"
+                               "dev"]
 
                 :figwheel {:on-jsload "onyx.sim.system/reset"}
 

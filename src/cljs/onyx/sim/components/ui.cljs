@@ -15,16 +15,21 @@
 (defn show-ui [conn]
   (let [debug true]
     (if debug
-      [sim/sim-selector {:dat.sync.db/conn conn}]
+      [sim/sim-selector conn]
       [:div
-       [dat.view/render-segment
-        {:dat.sync.db/conn conn
-         :onyx.sim/sim [:onyx/name :dat.view/sim]
-         :dat.view/route :dat.view.route/todos}]
-       [dat.view/render-segment
-        {:dat.sync.db/conn conn
-         :onyx.sim/sim [:onyx/name :dat.view/sim]
-         :dat.view/route :dat.view.route/index}]])))
+;;        [:p "/todo"]
+;;        [dat.view/render-segment
+;;         {:dat.sync.db/conn conn
+;;          :onyx.sim/sim [:onyx/name :dat.view/sim]
+;;          :dat.view/route :dat.view.route/todos}]
+;;        [dat.view/render-segment
+;;         {:dat.sync.db/conn conn
+;;          :onyx.sim/sim [:onyx/name :dat.view/sim]
+;;          :dat.view/route :dat.view.route/todo
+;;          :dat.view/entity 28}]
+;;        [sim/sim-selector ^{:dat.sync.db/conn conn} {:dat.sync.db/conn conn}]
+
+       ])))
 
 (defrecord UIComponent [knowbase]
   component/Lifecycle

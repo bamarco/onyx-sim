@@ -5,8 +5,7 @@
             [datascript.core :as d]
             [onyx.sim.core :as sim]
             [onyx.sim.event :as event]
-            #?(:cljs [posh.reagent :as posh])
-            #?(:cljs [reagent.core :as r :refer [atom]])))
+            [reagent.core :as r :refer [atom]]))
 
 ;;;
 ;;; Predicates
@@ -98,6 +97,9 @@
 (def ^:export dat-view-lifecycle
   {:lifecycle/before-task-start (sim/context-injecter conn-context dispatch-context)})
 
+(def ^:export meta-lifecycle
+  {:lifecycle/before-task-start (sim/context-injecter)})
+
 (defn ^:export sim-render [outputs]
   [flui/h-box
    :children
@@ -109,7 +111,7 @@
 (defn render-segment [;;{:as sys :keys [dat.sync.db/conn]}
                       {:as seg :keys [onyx.sim/sim dat.sync.db/conn]}]
   (log/info "rendering seg" (sim/printable-seg seg))
-  (let [env (sim/pull-clean-env conn sim)]
+  (let [env (sim/pull-env conn sim)]
     ;; !!!: (log/info "clean" (onyx/env-summary env))
     (try
       (->
@@ -120,7 +122,7 @@
         :outputs
         first
         :dat.view/component)
-      (catch #?(:clj Error :cljs :default) e
+      (catch :default e
         [sim/sim-debug
          {:dat.sync.db/conn conn}
          {:onyx.sim/sim sim
@@ -139,7 +141,11 @@
       :onyx.sim/clean-env (:onyx.sim/clean-env parent-sim)})]))
 
 (defn box* [;;{:as sys :keys [dat.sync.db/conn]}
-            {:as seg :keys [onyx.sim/sim dat.sync.db/conn dat.view/direction dat.view/layout dat.view/style]}]
+            {:as seg :keys [onyx.sim/sim
+                            dat.sync.db/conn
+                            dat.view/direction
+                            dat.view/layout
+                            dat.view/style]}]
   (let [segments (map (partial inherit-context seg) layout)
         children (map
                    (fn [child]
@@ -167,9 +173,7 @@
   (assoc
     seg
     :dat.view/component
-    [box*
-;;      sys
-     seg]))
+    [box* seg]))
 
 (defn ^:export label [;;{:as sys :keys [dat.sync.db/conn]}
                       {:as seg :keys [dat.view/label]}]
@@ -209,33 +213,38 @@
     :dat.view/component
     [flui/p (str "Unknown representation:" seg)]))
 
+(defn locate-conn [seg]
+  (-> seg meta :dat.sync.db/conn))
+
 ;;;
 ;;; Subscription Tasks
 ;;;
-(defn ^:export route [;;{:as sys :keys [dat.sync.db/conn]}
-                      {:as seg :keys [dat.sync.db/conn
+(defn ^:export route [sys;;{:as sys :keys [dat.sync.db/conn]}
+                      {:as seg :keys [;;dat.sync.db/conn
                                       dat.view/route
                                       db/id]}]
-  (log/info "Routing (or " id route )
-  (log/info "  conn" conn)
-  (log/info "  pull" (d/pull @conn '[*] (or id [:dat.view/route route])) ")")
-  (into
-    seg
-    (sim/pull conn '[*] (or id [:dat.view/route route]))))
-
-(defn ^:export pull [;;{:as sys :keys [dat.sync.db/conn]}
-                     {:as seg :keys [dat.sync.db/conn
-                                     dat.view/pull-expr
-                                     dat.view/entity
-                                     dat.view/alias]}]
-  (log/info "pull")
-  (log/info pull-expr entity)
-  (map-alias
-    alias
+  (let [conn (locate-conn sys)]
+    (log/info "Routing (or " id route )
+    (log/info "  conn" conn)
+    (log/info "  pull" (d/pull @conn '[*] (or id [:dat.view/route route])) ")")
     (into
       seg
-      (when pull-expr
-        (sim/pull conn pull-expr entity)))))
+      (d/pull conn '[*] (or id [:dat.view/route route])))))
+
+(defn ^:export pull [;;{:as sys :keys [dat.sync.db/conn]}
+                      {:as seg :keys [;;dat.sync.db/conn
+                                      dat.view/pull-expr
+                                      dat.view/entity
+                                      dat.view/alias]}]
+  (let [conn (locate-conn seg)]
+    (log/info "pull")
+    (log/info pull-expr entity)
+    (map-alias
+      alias
+      (into
+        seg
+        (when pull-expr
+          (d/pull conn pull-expr entity))))))
 
 (defn ^:export query [;;{:as sys :keys [dat.sync.db/conn]}
                       {:as seg :keys [dat.sync.db/conn
@@ -246,7 +255,7 @@
   (log/info "dat-view-query")
   (let [find-vars (parse-find-vars q-expr)
         relation (when q-expr
-                   (apply sim/q q-expr conn inputs))]
+                   (apply d/q q-expr conn inputs))]
     (into
       seg
       (when relation
@@ -278,6 +287,7 @@
      :onyx/batch-size onyx-batch-size}
 
     {:onyx/name :dat.view.subscribe/route
+     :onyx/doc "This pulls * the :dat.view/route and merges into the segment."
      :onyx/type :function
      :onyx/fn ::route
      :onyx/batch-size onyx-batch-size}
@@ -319,7 +329,7 @@
      :onyx/type :output
      :onyx/batch-size onyx-batch-size}]))
 
-(defn job []
+(def job
   {:onyx/type :onyx.core/job
    :onyx.core/catalog (catalog)
 
@@ -345,6 +355,22 @@
 ;;     {:lifecycle/task :dat.view.represent/text-input
 ;;      :lifecycle/calls ::dat-view-lifecycle
 ;;      :onyx.sim/system :onyx.sim.system/system}]
+
+   :onyx.core/lifecycles
+   [{:lifecycle/task :dat.view.subscribe/route
+     :lifecycle/calls ::meta-lifecycle}
+    {:lifecycle/task :dat.view.subscribe/pull
+     :lifecycle/calls ::meta-lifecycle}
+    {:lifecycle/task :dat.view.subscribe/query
+     :lifecycle/calls ::meta-lifecycle}
+    {:lifecycle/task :dat.view.represent/box
+     :lifecycle/calls ::meta-lifecycle}
+    {:lifecycle/task :dat.view.represent/label
+     :lifecycle/calls ::meta-lifecycle}
+    {:lifecycle/task :dat.view.represent/checkbox
+     :lifecycle/calls ::meta-lifecycle}
+    {:lifecycle/task :dat.view.represent/text-input
+     :lifecycle/calls ::meta-lifecycle}]
 
    :onyx.core/workflow
    [[:dat.view/dispatch :dat.view.event/intent]
@@ -391,15 +417,20 @@
      :flow/predicate :onyx.sim.core/always
      :flow/short-circuit? true}]})
 
-(defn simulator [{:as seg :keys [dat.sync.db/conn]}]
-  (sim/make-sim
+(defn simulator [{:as resources :keys [dat.sync.db/conn onyx.sim/sim]}]
+  (sim/make-sim2
     :name :dat.view/sim
     :title "Dat View Simulator"
     :description "This will simulate the compute graph for dat view."
-    :job (job)
+    :job (update-in
+           job
+           [:onyx.core/lifecycles]
+           (fn [lifecycles]
+             (for [lc lifecycles]
+               (with-meta lc resources))))
     :inputs {:dat.view/render
-             [;;(assoc seg :dat.view/route :dat.view.route/index)
-              (assoc seg :dat.view/route :dat.view.route/todos)]}))
+             [{:dat.view/route :dat.view.route/todos}
+              {:dat.view/route :dat.view.route/index}]}))
 
 (def todos-query
   '[:find ?todo
@@ -411,7 +442,8 @@
    [{:e/type :e.type/Todo
      :e/name "Test Todo"
      :dat.view/toggled? false}
-    {:e/type :e.type/Todo
+    {:onyx/name :example-label
+     :e/type :e.type/Todo
      :e/name "Bake a Cake"
      :dat.view/toggled? true}
     {:dat.view/route :dat.view/hello-world
@@ -428,6 +460,12 @@
      :dat.view/represent :dat.view.represent/label
      :dat.view/pull-expr [:dat.view/label]
      :dat.view/entity [:dat.view/route :dat.view/bye-world]}
+    {:dat.view/route :example/todo-name
+     :dat.view/subscribe :dat.view.subscribe/pull
+     :dat.view/represent :dat.view.represent/label
+     :dat.view/pull-expr [:e/name]
+     :dat.view/alias {:dat.view/label [:e/name]}
+     :dat.view/entity [:onyx/name :example-label]}
     {:dat.view/route :dat.view.route/index
      :dat.view/style {:background-color :LightGray}
      :dat.view/direction :vertical

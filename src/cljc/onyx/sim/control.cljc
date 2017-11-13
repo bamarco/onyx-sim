@@ -1,6 +1,7 @@
 (ns onyx.sim.control
   (:require [taoensso.timbre :as log]
             [onyx.sim.flui :as flui]
+            [onyx.sim.event :as event]
             [onyx.sim.utils :as utils :refer [cat-into]]
             [datascript.core :as d]
 ;;             [onyx-local-rt.impl :refer [kw->fn]]
@@ -23,7 +24,7 @@
         (d/pull @conn expr eid))))
 
 (defn compile-control [conn control-spec]
-  ;; FIXME: controls are compiling more than once and are only reactive inasmuch as they depend on reactive posh data. If we ousource this to re-frame subscriptions, we won't need to re-invent the wheel. The other option is to do our own dag processing (which may happen naturally with tighter onyx integration). As is it works and is merely an efficiency leak. This is a good spot to check for efficiency gains later on.
+  ;; FIXME: controls are compiling more than once and are only reactive inasmuch as they depend on reactive posh data. As is it works and is merely an efficiency leak. This is a good spot to check for efficiency gains later on.
   (into
     {}
     (for [[attr value] control-spec]
@@ -33,7 +34,9 @@
         [attr value]))))
 
 (defn pull-control [conn control-name]
-  (compile-control conn (pull conn '[*] [:control/name control-name])))
+  (let [control (pull conn '[*] [:control/name control-name])]
+    (log/info "compile-control" control)
+    (compile-control conn control)))
 
 (defn ^:export control-attr [conn control-name attr]
   (get
@@ -121,14 +124,14 @@
        :label display]]]))
 
 (defn active-logo [conn control-name]
-  (let [{:keys [:control/label :control/img :control/active?]} (pull-control conn control-name)]
+  (let [{:keys [control/label control/img control/active?]} (pull-control conn control-name)]
     ;; FIXME: abrupt ending animation
-    (flui/h-box
+    [flui/h-box
       :class "active-logo"
       :children
       [[flui/box :child [:img {:class (str "active-logo-img" (when active? " spinning"))
                                :src img}]]
-       [flui/label :label label]])))
+       [flui/label :label label]]]))
 
 (defn ^:export simple-concat [db {:as seg :keys [dat.view/entity dat.view/attr dat.view/inputs]}]
   (for [input inputs]
@@ -246,9 +249,10 @@
      :on-change #(choose #{(id-fn choice)})]))
 
 (defn nav-bar [conn control-name]
-  (let [{:keys [:control/id-fn :control/label-fn :control/choices :control/choose :control/chosen]} (pull-control conn control-name)
+  (let [{:keys [control/id-fn control/label-fn control/choices control/choose control/chosen]} (pull-control conn control-name)
         id-fn (or id-fn :id)
         label-fn (or label-fn :label)]
+  (log/info "nav-bar" chosen)
     ;; ???: should the or-clause for id-fn be part of compile-controls?
     ;; ???: maybe a more generic way to do the bridging. drop nil arguments?
     [flui/horizontal-bar-tabs
@@ -257,6 +261,20 @@
      :id-fn id-fn
      :label-fn label-fn
      :on-change choose]))
+
+(defn nav-bar2 [conn control-name]
+  (let [{:keys [control/id-fn control/label-fn control/choices dat.view/event control/chosen]} (pull-control conn control-name)
+        id-fn (or id-fn :id)
+        label-fn (or label-fn :label)]
+  (log/info "nav-bar" chosen)
+    ;; ???: should the or-clause for id-fn be part of compile-controls?
+    ;; ???: maybe a more generic way to do the bridging. drop nil arguments?
+    [flui/horizontal-bar-tabs
+     :tabs choices
+     :model chosen ;; ???: treat chosen as a set always? distinction for choose one vs choose many?
+     :id-fn id-fn
+     :label-fn label-fn
+     :on-change (partial event/dispatch! conn event)]))
 
 (defn indicator-display [conn control-name]
   (let [{:keys [:control/display]} (pull-control conn control-name)]
