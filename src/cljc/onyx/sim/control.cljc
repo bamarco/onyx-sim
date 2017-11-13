@@ -84,19 +84,18 @@
      :on-click action]))
 
 (defn toggle-button [conn control-name]
-  (let [{:keys [:control/label :control/toggle-label :control/toggled? :control/toggle]} (pull-control conn control-name)]
+  (let [{:keys [control/label control/toggle-label control/toggled? dat.view/event]} (pull-control conn control-name)]
     [flui/button
      :label (if toggled? (or toggle-label label) label)
-     :on-click toggle]))
+     :on-click (partial event/dispatch! conn event)]))
 
 (defn toggle-checkbox [conn control-name]
-  (let [{:keys [:control/disabled? :control/label :control/toggle-label :control/toggled? :control/toggle]} (pull-control conn control-name)]
+  (let [{:keys [control/disabled? control/label control/toggle-label control/toggled? dat.view/event]} (pull-control conn control-name)]
     [flui/checkbox
      :model toggled?
      :disabled? disabled?
      :label (if toggled? (or toggle-label label) label)
-     :on-change toggle
-      ]))
+     :on-change (partial event/dispatch! conn event)]))
 
 (defn selection-list [conn control-name]
   (let [{:keys [:control/label :control/choices :control/chosen :control/choose :control/id-fn :control/label-fn]} (pull-control conn control-name)]
@@ -249,20 +248,6 @@
      :on-change #(choose #{(id-fn choice)})]))
 
 (defn nav-bar [conn control-name]
-  (let [{:keys [control/id-fn control/label-fn control/choices control/choose control/chosen]} (pull-control conn control-name)
-        id-fn (or id-fn :id)
-        label-fn (or label-fn :label)]
-  (log/info "nav-bar" chosen)
-    ;; ???: should the or-clause for id-fn be part of compile-controls?
-    ;; ???: maybe a more generic way to do the bridging. drop nil arguments?
-    [flui/horizontal-bar-tabs
-     :tabs choices
-     :model chosen ;; ???: treat chosen as a set always? distinction for choose one vs choose many?
-     :id-fn id-fn
-     :label-fn label-fn
-     :on-change choose]))
-
-(defn nav-bar2 [conn control-name]
   (let [{:keys [control/id-fn control/label-fn control/choices dat.view/event control/chosen]} (pull-control conn control-name)
         id-fn (or id-fn :id)
         label-fn (or label-fn :label)]

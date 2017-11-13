@@ -81,7 +81,7 @@
                      :else 0)]
     (try
       (if (= tick-count 0)
-        [;[:db/remove id :onyx.sim/pause-count pause-count]
+        [;[:db/retract id :onyx.sim/pause-count pause-count]
          [:db/add id :onyx.sim/pause-count next-pause-count]]
         (pull-and-transition-env db id (repeat tick-count onyx/tick)))
       (catch #?(:clj Error :cljs :default) e
@@ -100,6 +100,31 @@
       into
       []
       sims)))
+
+(defn ^:export simple-toggle [db {:keys [dat.view/entity dat.view/attr]}]
+  (let [old-value (attr (d/entity db entity))
+        new-value (not old-value)]
+    [[:db/retract entity attr old-value]
+     [:db/add entity attr new-value]]))
+
+(defmethod intent2
+  ::simple-toggle
+  [conn event _]
+  (d/transact!
+    conn
+    [[:db.fn/call simple-toggle event]]))
+
+(defn ^:export simple-value [db {:keys [dat.view/entity dat.view/attr dat.view/value]}]
+  (let [old-value (attr (d/entity db entity))]
+    [[:db/retract entity attr old-value]
+     [:db/add entity attr value]]))
+
+(defmethod intent2
+  ::simple-value
+  [conn event [value]]
+  (d/transact!
+    conn
+    [[:db.fn/call simple-value (assoc event :dat.view/value value)]]))
 
 (defmethod intent
   :reagent/next-tick

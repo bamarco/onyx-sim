@@ -111,20 +111,6 @@
                                         :description :onyx.sim/description
                                         :inputs :onyx.sim/inputs}))))
 
-;; (def q
-;;   #?(:cljs
-;;       (comp deref posh/q)
-;;       :clj
-;;       (fn [query conn & args]
-;;         (apply d/q query @conn args))))
-
-;; (def pull
-;;   #?(:cljs
-;;       (comp deref posh/pull)
-;;       :clj
-;;       (fn [conn expr eid]
-;;         @(posh/pull @conn expr eid))))
-
 (defn pull-q [pull-expr query conn & input]
   (map (fn [[eid]] @(posh/pull conn pull-expr eid)) @(apply posh/q query conn input)))
 
@@ -240,30 +226,30 @@
     {:control/type :toggle
      :control/name :onyx.sim/description?
      :control/label "Show Sim Description"
-     :control/toggle (:onyx.sim.control/simple-toggle :onyx.sim/description?)
-     :control/toggle-event {:dat.view/handler ::simple-toggle
-                            :dat.view/entity [:control/name :onyx.sim/description?]
-                            :dat.view/attr :control/toggled?}
+     :dat.view/event {:dat.view/handler :onyx.sim.event/simple-toggle
+                      :dat.view/entity [:control/name :onyx.sim/description?]
+                      :dat.view/attr :control/toggled?}
      :control/toggled? false}
     {:control/type :toggle
      :control/name :onyx.sim/hidden?
      :control/label "Show Task Hider"
-     :control/toggle (:onyx.sim.control/simple-toggle :onyx.sim/hidden?)
-     :control/toggle-event {:dat.view/handler ::simple-toggle
-                            :dat.view/entity [:control/name :onyx.sim/hidden?]
-                            :dat.view/attr :control/toggled?}
+     :dat.view/event {:dat.view/handler :onyx.sim.event/simple-toggle
+                      :dat.view/entity [:control/name :onyx.sim/hidden?]
+                      :dat.view/attr :control/toggled?}
      :control/toggled? true}
     {:control/type :toggle
      :control/name :onyx.sim/next-action?
      :control/label "Show Next Action"
-     :control/toggle (:onyx.sim.control/simple-toggle :onyx.sim/next-action?)
+     :dat.view/event {:dat.view/handler :onyx.sim.event/simple-toggle
+                      :dat.view/entity [:control/name :onyx.sim/next-action?]
+                      :dat.view/attr :control/toggled?}
      :control/toggled? true}
     {:control/type :choice
      :control/name :onyx.sim/env-display-style
      :control/label "Environment Display Style"
      :control/chosen #{:pretty-env}
      :control/choose (:onyx.sim.control/simple-choose-one :onyx.sim/env-display-style)
-     :control/choose-event {:dat.view/handler ::simple-value
+     :control/choose-event {:dat.view/handler :onyx.sim.event/simple-toggle
                             :dat.view/entity [:control/name :onyx.sim/hidden?]
                             :dat.view/attr :control/chosen}
      :control/choices [{:id :pretty-env
@@ -279,13 +265,17 @@
     {:control/type :toggle
      :control/name :onyx.sim/render-segments?
      :control/label "(Render Segments)"
-     :control/toggle (:onyx.sim.control/simple-toggle :onyx.sim/render-segments?)
+     :dat.view/event {:dat.view/handler :onyx.sim.event/simple-toggle
+                      :dat.view/entity [:control/name :onyx.sim/render-segments?]
+                      :dat.view/attr :control/toggled?}
      :control/disabled? (:onyx.sim.control/simple-not-chosen? :onyx.sim/env-display-style :pretty-env)
      :control/toggled? true}
     {:control/type :toggle
      :control/name :onyx.sim/only-summary?
      :control/label "(Only Summary)"
-     :control/toggle (:onyx.sim.control/simple-toggle :onyx.sim/only-summary?)
+     :dat.view/event {:dat.view/handler :onyx.sim.event/simple-toggle
+                      :dat.view/entity [:control/name :onyx.sim/only-summary?]
+                      :dat.view/attr :control/toggled?}
      :control/disabled? (:onyx.sim.control/simple-not-chosen? :onyx.sim/env-display-style :raw-env)
      :control/toggled? true}
     {:control/type :action
@@ -308,12 +298,17 @@
      :control/label "Play"
      :control/toggle-label "Pause"
      :control/toggled? (::running?)
+;;      :dat.view/event {:dat.view/handler :onyx.sim.event/simple-toggle ***TODO: toggle-play
+;;                       :dat.view/entity [:control/name :onyx.sim/next-action?]
+;;                       :dat.view/attr :control/toggled?}
      :control/toggle (::toggle-play)}
     {:control/type :choice
      :control/name :onyx.sim/hidden-tasks
      :control/label "Hidden Tasks"
      :control/chosen (::hidden-tasks)
      :control/choose (::hide-tasks)
+     ;; TODO***:
+     :dat.view/event {:dat.view/handler :onyx.sim.event/hide-tasks}
      :control/choices (::sorted-tasks)
      :control/show? (:onyx.sim.control/control-attr :onyx.sim/hidden? :control/toggled?)
      :control/id-fn :onyx/name
