@@ -65,6 +65,12 @@
     (dispense db)
     [(:db/id (d/entity db sim)) :env]))
 
+(defn sim-or-selected [db sim]
+  (or (d/entity db sim)
+      (-> db
+          (d/entity [:onyx/name :onyx.sim/settings])
+          :onyx.sim/selected-sim)))
+
 (defmethod intent2 ::animate-sims
   [db _ _]
   (let [{:keys [db/id
@@ -288,17 +294,30 @@
   [[:db/add sim :onyx.sim/hidden-tasks task-names]])
 
 (defn hide-tasks [db {:keys [onyx.sim/sim onyx.sim/task-names]}]
-  (let [sim (or sim (:onyx.sim/selected-sim (d/entity db [:onyx/name :onyx.sim/settings])))]
-    [[:db/add sim :onyx.sim/hidden-tasks task-names]]))
+  (let [sim (sim-or-selected db sim)]
+    (log/info "hidden-tasks" sim task-names)
+    [[:db/add (:db/id sim) :onyx.sim/hidden-tasks task-names]]))
+
+(defn hide-task [db {:keys [onyx.sim/sim onyx.sim/task-name]}]
+  (let [sim (sim-or-selected db sim)
+        hidden-tasks (:onyx.sim/hidden-tasks sim)]
+    (log/info "hidden-task" sim hidden-tasks task-name)
+    [[:db/add (:db/id sim) :onyx.sim/hidden-tasks (conj hidden-tasks task-name)]]))
 
 (defmethod intent2
-  :onyx.sim.event/hide-tasks
-  [db event input]
+  ::hide-tasks
+  [db event [task-names]]
   [[:db.fn/call
     hide-tasks
     (assoc
       event
-      :onyx.sim/task-names input)]])
+      :onyx.sim/task-names task-names)]])
+
+(defmethod intent2
+  ::hide-task
+  [db event _]
+  (log/info "hiding" event)
+  [[:db.fn/call hide-task event]])
 
 (defmethod intent
   :onyx.sim.event/hide-task
@@ -366,12 +385,6 @@
   (do
     (d/transact! conn [[:db/add sim :onyx.sim/running? true]])
     (run-sims conn)))
-
-(defn sim-or-selected [db sim]
-  (or (d/entity db sim)
-      (-> db
-          (d/entity [:onyx/name :onyx.sim/settings])
-          :onyx.sim/selected-sim)))
 
 (defmethod intent2
   ::toggle-play

@@ -361,27 +361,27 @@
 ;;                [resource value])))
 ;;       resource-locations)))
 
-(defn resource-contexter
-  "FAILED attempt"
-  []
-  (fn [event {:as lifecycle :keys [onyx.sim/resource-locations]}]
+;; (defn resource-contexter
+;;   "FAILED attempt"
+;;   []
+;;   (fn [event {:as lifecycle :keys [onyx.sim/resource-locations]}]
 
-  (log/info "resource-contexter" resource-locations)
-    (into
-      {}
-      (map (fn [[resource location]]
-             (let [value (onyx/kw->fn location)]
-               (log/info "resource: " resource " at " location " is " value)
-               [resource value])))
-      resource-locations)))
+;;   (log/info "resource-contexter" resource-locations)
+;;     (into
+;;       {}
+;;       (map (fn [[resource location]]
+;;              (let [value (onyx/kw->fn location)]
+;;                (log/info "resource: " resource " at " location " is " value)
+;;                [resource value])))
+;;       resource-locations)))
 
-(defn task-contexter [task-locations]
-  (fn [{:as event :keys [onyx.core/task-map]} lifecycle]
-    (into
-      {}
-      (map (fn [[resource location]]
-             [resource (get-in task-map location)]))
-      task-locations)))
+;; (defn task-contexter [task-locations]
+;;   (fn [{:as event :keys [onyx.core/task-map]} lifecycle]
+;;     (into
+;;       {}
+;;       (map (fn [[resource location]]
+;;              [resource (get-in task-map location)]))
+;;       task-locations)))
 
 (defn context-injecter [& fns]
   (fn [event lifecycle]
@@ -584,12 +584,12 @@
             :level :level2)
           [flui/button
             :label "Hide"
-            :on-click #()
-            ;; ***TODO: event
-;;             #(dispatch conn {:onyx/type :onyx.sim.event/hide-task
-;;                              :onyx.sim/sim sim
-;;                              :onyx.sim/task-name task-name})
-            ]
+            :on-click
+            #(event/dispatch!
+               conn
+               {:dat.view/handler :onyx.sim.event/hide-task
+                :onyx.sim/sim sim
+                :onyx.sim/task-name task-name})]
           (when task-doc [flui/p task-doc])])
        [pretty-inbox conn
         (assoc seg

@@ -99,6 +99,7 @@
 
 (defn selection-list [conn control-name]
   (let [{:keys [control/label control/choices control/chosen dat.view/event control/id-fn control/label-fn]} (pull-control conn control-name)]
+    (log/info "list-box" {:choices choices :chosen chosen})
     [flui/v-box
      :children
      [[flui/label
