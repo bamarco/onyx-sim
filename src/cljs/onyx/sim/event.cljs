@@ -28,6 +28,9 @@
       inputs]]
     {:datascript.db/tx-middleware tx-middleware}))
 
+(defn raw-dispatch! [conn {:as event} & inputs]
+  (intent2 conn event inputs))
+
 (def transitions-query '[:find ?sim ?transitions
                         :in $
                         :where
@@ -177,9 +180,9 @@
       (assoc event
         :dat.view/inputs inputs)]]))
 
-(defn raw-dispatch [conn seg]
-  ;; TODO: make a nice error for when you didn't use raw-dispatch and you should have
-  (intent conn seg))
+;; (defn raw-dispatch [conn seg]
+;;   ;; TODO: make a nice error for when you didn't use raw-dispatch and you should have
+;;   (intent conn seg))
 
 (defn new-segments [env task-name segments]
   ;; TODO
@@ -240,7 +243,7 @@
 (defn ^:export simple-toggle [db {:keys [dat.view/entity dat.view/attr]}]
   (let [old-value (attr (d/entity db entity))
         new-value (not old-value)]
-    [[:db/retract entity attr old-value]
+    [(when old-value [:db/retract entity attr old-value])
      [:db/add entity attr new-value]]))
 
 (defmethod intent2
@@ -250,7 +253,8 @@
 
 (defn ^:export simple-value [db {:keys [dat.view/entity dat.view/attr dat.view/value]}]
   (let [old-value (attr (d/entity db entity))]
-    [[:db/retract entity attr old-value]
+    (log/info "set eav" [entity attr value])
+    [(when old-value [:db/retract entity attr old-value])
      [:db/add entity attr value]]))
 
 (defmethod intent2
@@ -448,8 +452,8 @@
         tss (-> db
                 (d/entity sim)
                 :onyx.sim/transitions)]
-    [[:db/retract sim :onyx.sim/transitions tss]
-     [:db/add sim :onyx.sim/transitions (into tss transitions)]]))
+    [(when tss [:db/retract sim :onyx.sim/transitions tss])
+     [:db/add sim :onyx.sim/transitions (into (or tss []) transitions)]]))
 
 (defmethod intent
   :onyx.sim.event/import-segments
@@ -461,4 +465,16 @@
           (d/transact! conn [[:db.fn/call pull-and-transition-env sim
                                (for [seg (:body response)]
                                  #(onyx/new-segment % task-name seg))]])))))
+
+(defmethod intent2
+  ::import-segments
+  [conn {:keys [onyx.sim/sim onyx.sim/task-name]} _]
+  (let [uri (first (:onyx.sim/import-uris (d/entity @conn sim)))]
+    (go
+      (let [response (<! (http/get uri))]
+        (log/info (str "retrieving edn from <" uri ">"))
+        (log/debug "edn is...\n" (ppr-str (:body response)))
+        (dispatch! conn {:dat.view/handler ::transitions
+                         :onyx.sim/transitions [{:event :onyx.sim.api/inputs
+                                                 :inputs {task-name (:body response)}}]})))))
 

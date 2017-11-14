@@ -271,19 +271,16 @@
      :control/label "Tick"
      :dat.view/event {:dat.view/handler :onyx.sim.event/transitions
                       :onyx.sim/transitions [{:event :onyx.sim.api/tick}]}
-;;      :control/action (::tick)
      :control/disabled? (::running?)}
     {:control/type :action
      :control/name :onyx.api/step
      :control/label "Step"
-;;      :control/action (::step)
      :dat.view/event {:dat.view/handler :onyx.sim.event/transitions
                       :onyx.sim/transitions [{:event :onyx.sim.api/step}]}
      :control/disabled? (::running?)}
     {:control/type :action
      :control/name :onyx.api/drain
      :control/label "Drain"
-;;      :control/action (::drain)
      :dat.view/event {:dat.view/handler :onyx.sim.event/transitions
                       :onyx.sim/transitions [{:event :onyx.sim.api/drain}]}
      :control/disabled? (::running?)}
@@ -292,18 +289,11 @@
      :control/label "Play"
      :control/toggle-label "Pause"
      :control/toggled? (::running?)
-;;      :dat.view/event {:dat.view/handler :onyx.sim.event/simple-toggle ***TODO: toggle-play
-;;                       :dat.view/entity [:control/name :onyx.sim/next-action?]
-;;                       :dat.view/attr :control/toggled?}
-     :dat.view/event {:dat.view/handler :onyx.sim.event/toggle-play}
-;;      :control/toggle (::toggle-play)
-     }
+     :dat.view/event {:dat.view/handler :onyx.sim.event/toggle-play}}
     {:control/type :choice
      :control/name :onyx.sim/hidden-tasks
      :control/label "Hidden Tasks"
      :control/chosen (::hidden-tasks)
-;;      :control/choose (::hide-tasks)
-     ;; TODO***:
      :dat.view/event {:dat.view/handler :onyx.sim.event/hide-tasks}
      :control/choices (::sorted-tasks)
      :control/show? (:onyx.sim.control/control-attr :onyx.sim/hidden? :control/toggled?)
@@ -539,18 +529,19 @@
          :level :level3]
         [flui/input-text
          :model (str (first import-uris))
-         :on-change #()
-         ;; TODO: dispatch-http-event
-;;          #(dispatch conn {:onyx/type :onyx.sim.event/import-uri
-;;                           :onyx.sim/sim sim
-;;                           :onyx.sim/task-name task-name
-;;                           :uri %})
+         :on-change (partial
+                      event/dispatch!
+                      conn
+                      {:dat.view/handler :onyx.sim.event/simple-value
+                       :dat.view/entity sim
+                       :dat.view/attr :onyx.sim/import-uri})
+         ;; ***FIXME: import-uris needs to be a selector
          ]
         [flui/button
          :label "Import Segments"
-         :on-click #(raw-dispatch conn {:onyx/type :onyx.sim.event/import-segments
-                                        :onyx.sim/sim sim
-                                        :onyx.sim/task-name task-name})]]]
+         :on-click #(event/raw-dispatch! conn {:dat.view/handler :onyx.sim.event/import-segments
+                                         :onyx.sim/sim sim
+                                         :onyx.sim/task-name task-name})]]]
       [render inbox]]]))
 
 (defn code-render [code]
@@ -647,9 +638,9 @@
       (selected-sim conn)
       view)))
 
-(defn ^:export toggle-play [conn]
-  #(event/raw-dispatch conn {:onyx/type :onyx.sim/toggle-play
-                             :onyx.sim/sim (selected-sim conn)}))
+;; (defn ^:export toggle-play [conn]
+;;   #(event/raw-dispatch conn {:onyx/type :onyx.sim/toggle-play
+;;                              :onyx.sim/sim (selected-sim conn)}))
 
 (defn ^:export running? [conn]
   (:onyx.sim/running? @(posh/pull conn '[:onyx.sim/running?] (selected-sim conn))))

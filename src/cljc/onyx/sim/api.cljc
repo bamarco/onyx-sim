@@ -191,6 +191,10 @@
   [env {:keys [task segment]}]
   (update-in env [:tasks task :outputs] (partial into [] (remove #(= segment %)))))
 
+(defmethod onyx/transition-env ::new-segment
+  [env {:keys [task segment]}]
+  (onyx/new-segment env task segment))
+
 (defn onyx-feed-loop [env & selections]
   ;; TODO: :in and :render need to be genericized
   (reduce
