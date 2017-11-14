@@ -86,16 +86,16 @@
 ;;;
 ;;; Lifecycle
 ;;;
-(def conn-context
-  (sim/system-contexter
-   {:dat.sync.db/conn [:knowbase :conn]}))
+;; (def conn-context
+;;   (sim/system-contexter
+;;    {:dat.sync.db/conn [:knowbase :conn]}))
 
-(def dispatch-context
-  (sim/system-contexter
-    {:dat.view/dispatch! [:knowbase :dispatch!]}))
+;; (def dispatch-context
+;;   (sim/system-contexter
+;;     {:dat.view/dispatch! [:knowbase :dispatch!]}))
 
-(def ^:export dat-view-lifecycle
-  {:lifecycle/before-task-start (sim/context-injecter conn-context dispatch-context)})
+;; (def ^:export dat-view-lifecycle
+;;   {:lifecycle/before-task-start (sim/context-injecter conn-context dispatch-context)})
 
 (def ^:export meta-lifecycle
   {:lifecycle/before-task-start (sim/context-injecter)})

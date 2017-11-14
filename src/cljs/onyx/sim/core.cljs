@@ -48,12 +48,11 @@
           (get (:db/id (d/entity db sim-id))))))))
 
 (defn pull-env [conn sim-id]
-  (onyx/listen-env @conn sim-id))
+  (event/listen-env @conn sim-id))
 
 (def default-sim
   {:onyx/type :onyx.sim/sim
    :onyx.sim/import-uris ["verbose.edn" "route.edn" "example.edn"]
-   :onyx.sim/speed 1.0
    :onyx.sim/running? false
    :onyx.sim/hidden-tasks #{}})
 
@@ -296,7 +295,9 @@
 ;;      :dat.view/event {:dat.view/handler :onyx.sim.event/simple-toggle ***TODO: toggle-play
 ;;                       :dat.view/entity [:control/name :onyx.sim/next-action?]
 ;;                       :dat.view/attr :control/toggled?}
-     :control/toggle (::toggle-play)}
+     :dat.view/event {:dat.view/handler :onyx.sim.event/toggle-play}
+;;      :control/toggle (::toggle-play)
+     }
     {:control/type :choice
      :control/name :onyx.sim/hidden-tasks
      :control/label "Hidden Tasks"
@@ -349,16 +350,16 @@
 ;;;
 ;;; Lifecycles
 ;;;
-(defn system-contexter [resource-locations]
-  (log/info "system-contexter" resource-locations)
-  (fn [event {:as lifecycle :keys [onyx.sim/system]}]
-    (into
-      {}
-      (map (fn [[resource location]]
-             (let [value (get-in (onyx/kw->fn system) location)]
-               (log/info "system-resource: " resource " at " location " is " value)
-               [resource value])))
-      resource-locations)))
+;; (defn system-contexter [resource-locations]
+;;   (log/info "system-contexter" resource-locations)
+;;   (fn [event {:as lifecycle :keys [onyx.sim/system]}]
+;;     (into
+;;       {}
+;;       (map (fn [[resource location]]
+;;              (let [value (get-in (onyx/kw->fn system) location)]
+;;                (log/info "system-resource: " resource " at " location " is " value)
+;;                [resource value])))
+;;       resource-locations)))
 
 (defn resource-contexter
   "FAILED attempt"
@@ -470,10 +471,17 @@
       :onyx.sim/selected-view :onyx.sim/sim-view
       :onyx.sim/selected-sim [:onyx/name ::hello-sim]}]))
 
-(def base-ui3
+(def base-ui
   (into
     control-catalog
-    [(make-sim2
+    [{:onyx/name :onyx.sim/settings
+      :onyx.sim/selected-view :settings
+      :onyx.sim/animation-transitions [{:event :onyx.sim.api/tick}]
+      :onyx.sim/frames-between-animation 30
+      :onyx.sim/animating? false}]))
+
+(def examples
+  [(make-sim2
        :name ::hello-sim
        :title "Hello Sim!"
        :description (:onyx/doc onyx.sim.examples.hello/job)
@@ -481,15 +489,16 @@
        :transitions [{:event :onyx.sim.api/init}
                      {:event :onyx.sim.api/inputs
                       :inputs {:in onyx.sim.examples.hello/input-segments}}])
-;;      (make-sim2
-;;        :name :flow-short-circuit
-;;        :job onyx.sim.examples.flow-short-circuit/job
-;;        :title "Flow Short Circuit"
-;;        :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job)
-;;        :inputs {:in onyx.sim.examples.flow-short-circuit/input-segments})
-     {:onyx/name :onyx.sim/settings
-      :onyx.sim/selected-view :onyx.sim/sim-view
-      :onyx.sim/selected-sim [:onyx/name ::hello-sim]}]))
+     (make-sim2
+       :name :flow-short-circuit
+       :job onyx.sim.examples.flow-short-circuit/job
+       :title "Flow Short Circuit"
+       :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job)
+       :transitions [{:event :onyx.sim.api/init}
+                     {:event :onyx.sim.api/inputs
+                      :inputs {:in onyx.sim.examples.flow-short-circuit/input-segments}}])
+   [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-sim [:onyx/name ::hello-sim]]
+   [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-view :onyx.sim/sim-view]])
 
 (defn selected-sim [conn]
   (let [{{:keys [db/id]} :onyx.sim/selected-sim} @(posh/pull conn '[:onyx.sim/selected-sim] [:onyx/name :onyx.sim/settings])]
@@ -530,10 +539,13 @@
          :level :level3]
         [flui/input-text
          :model (str (first import-uris))
-         :on-change #(dispatch conn {:onyx/type :onyx.sim.event/import-uri
-                                     :onyx.sim/sim sim
-                                     :onyx.sim/task-name task-name
-                                     :uri %})]
+         :on-change #()
+         ;; TODO: dispatch-http-event
+;;          #(dispatch conn {:onyx/type :onyx.sim.event/import-uri
+;;                           :onyx.sim/sim sim
+;;                           :onyx.sim/task-name task-name
+;;                           :uri %})
+         ]
         [flui/button
          :label "Import Segments"
          :on-click #(raw-dispatch conn {:onyx/type :onyx.sim.event/import-segments
@@ -570,11 +582,14 @@
           (flui/title
             :label task-name
             :level :level2)
-          (flui/button
+          [flui/button
             :label "Hide"
-            :on-click #(dispatch conn {:onyx/type :onyx.sim.event/hide-task
-                                       :onyx.sim/sim sim
-                                       :onyx.sim/task-name task-name}))
+            :on-click #()
+            ;; ***TODO: event
+;;             #(dispatch conn {:onyx/type :onyx.sim.event/hide-task
+;;                              :onyx.sim/sim sim
+;;                              :onyx.sim/task-name task-name})
+            ]
           (when task-doc [flui/p task-doc])])
        [pretty-inbox conn
         (assoc seg
@@ -639,20 +654,20 @@
 (defn ^:export running? [conn]
   (:onyx.sim/running? @(posh/pull conn '[:onyx.sim/running?] (selected-sim conn))))
 
-(defn ^:export tick [conn]
-  #(event/dispatch conn {:onyx/type :onyx.sim/transition-env
-                         :onyx.sim/transition :onyx.api/tick
-                         :onyx.sim/sim (selected-sim conn)}))
+;; (defn ^:export tick [conn]
+;;   #(event/dispatch conn {:onyx/type :onyx.sim/transition-env
+;;                          :onyx.sim/transition :onyx.api/tick
+;;                          :onyx.sim/sim (selected-sim conn)}))
 
-(defn ^:export step [conn]
-  #(event/dispatch conn {:onyx/type :onyx.sim/transition-env
-                         :onyx.sim/transition :onyx.api/step
-                         :onyx.sim/sim  (selected-sim conn)}))
+;; (defn ^:export step [conn]
+;;   #(event/dispatch conn {:onyx/type :onyx.sim/transition-env
+;;                          :onyx.sim/transition :onyx.api/step
+;;                          :onyx.sim/sim  (selected-sim conn)}))
 
-(defn ^:export drain [conn]
-  #(event/dispatch conn {:onyx/type :onyx.sim/transition-env
-                         :onyx.sim/transition :onyx.api/drain
-                         :onyx.sim/sim (selected-sim conn)}))
+;; (defn ^:export drain [conn]
+;;   #(event/dispatch conn {:onyx/type :onyx.sim/transition-env
+;;                          :onyx.sim/transition :onyx.api/drain
+;;                          :onyx.sim/sim (selected-sim conn)}))
 
 (defn ^:export next-action-actual [conn]
   ;; TODO: feed sim instead of selected-sim
@@ -667,15 +682,15 @@
 (defn ^:export hidden-tasks [conn]
   (:onyx.sim/hidden-tasks @(posh/pull conn '[:onyx.sim/hidden-tasks] (selected-sim conn))))
 
-(defn ^:export hide-tasks [conn]
-  #(event/dispatch conn {:onyx/type :onyx.sim.event/hide-tasks
-                         :onyx.sim/sim (selected-sim conn)
-                         :onyx.sim/task-names %}))
+;; (defn ^:export hide-tasks [conn]
+;;   #(event/dispatch conn {:onyx/type :onyx.sim.event/hide-tasks
+;;                          :onyx.sim/sim (selected-sim conn)
+;;                          :onyx.sim/task-names %}))
 
-(defn ^:export select-view [conn]
-  #(event/dispatch conn {:onyx/type :onyx.sim/select-view
-                         :onyx.sim/sim (selected-sim conn)
-                         :selected %}))
+;; (defn ^:export select-view [conn]
+;;   #(event/dispatch conn {:onyx/type :onyx.sim/select-view
+;;                          :onyx.sim/sim (selected-sim conn)
+;;                          :selected %}))
 
 (defn ^:export view-choices [conn]
   (let [sims @(posh/q '[:find ?title ?sim
@@ -710,16 +725,7 @@
     task-choices))
 
 (defn ^:export any-running? [conn]
-  ;; FIXME: rewrite query to use or-aggregation
-  (let [sims @(posh/q
-                '[:find ?sim
-                  :in $
-                  :where
-                  [?sim :onyx/type :onyx.sim/sim]
-                  [?sim :onyx.sim/running? true]]
-                conn)
-        any-running? (not (empty? sims))]
-    any-running?))
+  (:onyx.sim/animating? @(posh/pull conn [:onyx.sim/animating?] [:onyx/name :onyx.sim/settings])))
 
 (defn env-style [conn]
   [flui/v-box

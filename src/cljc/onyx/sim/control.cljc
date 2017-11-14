@@ -99,8 +99,6 @@
 
 (defn selection-list [conn control-name]
   (let [{:keys [control/label control/choices control/chosen dat.view/event control/id-fn control/label-fn]} (pull-control conn control-name)]
-    (log/info "selection-list" choices)
-    (log/info "selection-list" chosen)
     [flui/v-box
      :children
      [[flui/label
@@ -114,7 +112,7 @@
        :on-change (partial event/dispatch! conn event)]]]))
 
 (defn indicator-label [conn control-name]
-  (let [{:keys [:control/label :control/display]} (pull-control conn control-name)]
+  (let [{:keys [control/label control/display]} (pull-control conn control-name)]
     [flui/h-box
      :gap "1ch"
      :children
@@ -253,7 +251,7 @@
   (let [{:keys [control/id-fn control/label-fn control/choices dat.view/event control/chosen]} (pull-control conn control-name)
         id-fn (or id-fn :id)
         label-fn (or label-fn :label)]
-  (log/info "nav-bar" chosen)
+;;   (log/info "nav-bar" chosen)
     ;; ???: should the or-clause for id-fn be part of compile-controls?
     ;; ???: maybe a more generic way to do the bridging. drop nil arguments?
     [flui/horizontal-bar-tabs

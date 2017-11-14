@@ -2,7 +2,7 @@
   (:require [taoensso.timbre :as log]
             [onyx-local-rt.api :as onyx]
             #?(:cljs [reagent.ratom :as ratom])
-            #?(:cljs [reagent.core :refer [atom]])
+            #?(:cljs [reagent.core :as r :refer [atom]])
             [onyx.static.util :as util]
             [dat.sync.db :as d]
             [datascript.core :as ds]
@@ -46,13 +46,13 @@
 
 (defmethod onyx/transition-env ::inputs
   [env {:keys [inputs]}]
-  (log/info ::inputs)
+;;   (log/info ::inputs)
   (new-inputs env inputs))
 
 (defmethod onyx/transition-env ::init
   [env {:keys [sim db]}]
   (let [job (ds->onyx (:onyx.core/job (d/pull db '[{:onyx.core/job [{:onyx.core/catalog [*]} *]}] sim)))]
-    (log/info ::init)
+;;     (log/info ::init)
     (onyx/init job)))
 
 (defn meta-transact [{:as report :keys [db-before db-after]} meta-key meta-fn tx]
@@ -64,9 +64,9 @@
                      [meta-key]
                      (fn [env]
                        (meta-fn env db-after (rest tx)))))]
-    (log/info "meta-db-after" (get-in
-                                (meta db-after)
-                                [::transition 16 :tasks :hello :inbox]))
+;;     (log/info "meta-db-after" (get-in
+;;                                 (meta db-after)
+;;                                 [::transition 16 :tasks :hello :inbox]))
     (assoc
       report
       :db-after
@@ -113,15 +113,6 @@
     (map? tx)
     (= (:dat.view/handler tx) ::transition)))
 
-(defn sim-transitioner [db sim]
-  (fn [env transition]
-    (log/info "transitioning")
-    (onyx/transition-env
-      env
-      (assoc transition
-        :db db
-        :sim sim))))
-
 (defn mw-transition2
   [transact]
   (fn [report txs]
@@ -148,77 +139,6 @@
         :onyx.sim.api/transitions transitions))))
 
 (def middleware (comp mw-transition d/mw-keep-meta))
-
-(def tx-middleware d/mw-keep-meta)
-
-(def transitions-query '[:find ?sim ?transitions
-                        :in $
-                        :where
-                        [?sim :onyx/type :onyx.sim/sim]
-                        [?sim :onyx.sim/transitions ?transitions]])
-
-(defn transitions-diff [transitions-before transitions-after]
-  (let [[old-tss new-tss] (split-at (count transitions-before) transitions-after)]
-;;     (log/info "tss-diff" {:before transitions-before
-;;                           :after transitions-after
-;;                           :old old-tss
-;;                           :new new-tss})
-    (assert (or (not transitions-before)
-                (= old-tss transitions-before))
-            (ex-info
-              "Transition diff is unsafe"
-              {:transitions-before transitions-before
-               :transitions-after transitions-after}))
-    new-tss))
-
-(defn dispense [db]
-  (::env-atom (meta db)))
-
-(defn sim! [conn]
-  ;; ???: env snapshotting of transactions? Those ticks are gonna add up.
-  ;; ???: support undo transitions?
-  (swap!
-    conn
-    vary-meta
-    (fn [m]
-      (assoc
-        (or m {})
-        ::env-atom
-        (atom {}))))
-  (ds/listen!
-    conn
-    :onyx.sim.api/envs
-    (fn [{:as report :keys [db-before db-after]}]
-      (let [env-atom (dispense db-after)
-            sim->tss (d/q transitions-query db-after)]
-;;         (log/info "env-atom" env-atom sim->tss)
-        (swap!
-          env-atom
-          (fn [envs]
-;;             (log/info "reducing-tss")
-            (reduce
-              (fn [envs [sim tss-after]]
-                (log/info "tss-sim" sim tss-after)
-                (let [{:keys [env transitions]} (get envs sim)]
-;;                   (log/info "tss" {:before transitions
-;;                                    :after tss-after})
-                  (if (= transitions tss-after)
-                    envs
-                    (let [new-tss (transitions-diff transitions tss-after)]
-;;                       (log/info "new-tss" new-tss)
-                      (assoc
-                        envs
-                        sim
-                        {:env (reduce (sim-transitioner db-after sim) env new-tss)
-                         :transitions tss-after})))))
-              envs
-              sim->tss)))))))
-
-#?(:cljs
-(defn listen-env [db sim]
-  (ratom/cursor
-    (dispense db)
-    [(:db/id (d/entity db sim)) :env])))
 
 (defn out
   "Returns outputs of onyx job presumably after draining."

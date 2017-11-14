@@ -1,20 +1,15 @@
 (ns onyx.sim.event
   (:require [taoensso.timbre :as log]
             [dat.sync.db :as d :refer [pull q]]
+            [datascript.core :as ds]
             [onyx.sim.api :as onyx]
+            [reagent.ratom :as ratom]
             [onyx.sim.utils :as utils :refer [ppr-str cat-into]]
-            #?(:cljs [cljs.core.async :refer [<! chan]])
-            #?(:cljs [cljs-http.client :as http])
-            #?(:cljs [reagent.core :as r]))
-  #?(:cljs (:require-macros [cljs.core.async.macros :refer [go]])))
+            [cljs.core.async :refer [<! chan]]
+            [cljs-http.client :as http]
+            [reagent.core :as r])
+  (:require-macros [cljs.core.async.macros :refer [go]]))
 
-;; TODO: catch and display simulator errors.
-
-(defmulti intent (fn [_ seg]
-                   (let [intention (:onyx/type seg)]
-                     (assert intention "No :onyx/type set for intent.")
-                     ;; (log/debug seg "Intenting" intention)
-                     intention)))
 
 (defmulti intent2 (fn [conn event inputs]
                    (let [intention (:dat.view/handler event)]
@@ -22,14 +17,7 @@
                      ;; (log/debug seg "Intenting" intention)
                      intention)))
 
-(defn dispatch [conn seg]
-  (d/transact! conn [[:db.fn/call intent seg]]))
-
-;; (defn dispatch [conn seg]
-;;   (d/transact!
-;;     conn
-;;     [[:onyx.sim.api/transition seg]]
-;;     {:datascript.db/tx-middleware onyx/middleware}))
+(def tx-middleware d/mw-keep-meta)
 
 (defn dispatch! [conn {:as event} & inputs]
   (d/transact!
@@ -38,7 +26,143 @@
       intent2
       event
       inputs]]
-    {:datascript.db/tx-middleware onyx/tx-middleware}))
+    {:datascript.db/tx-middleware tx-middleware}))
+
+(def transitions-query '[:find ?sim ?transitions
+                        :in $
+                        :where
+                        [?sim :onyx/type :onyx.sim/sim]
+                        [?sim :onyx.sim/transitions ?transitions]])
+
+(defn transitions-diff [transitions-before transitions-after]
+  (let [[old-tss new-tss] (split-at (count transitions-before) transitions-after)]
+;;     (log/info "tss-diff" {:before transitions-before
+;;                           :after transitions-after
+;;                           :old old-tss
+;;                           :new new-tss})
+    (assert (or (not transitions-before)
+                (= old-tss transitions-before))
+            (ex-info
+              "Transition diff is unsafe"
+              {:transitions-before transitions-before
+               :transitions-after transitions-after}))
+    new-tss))
+
+(defn sim-transitioner [db sim]
+  (fn [env transition]
+;;     (log/info "transitioning")
+    (onyx/transition-env
+      env
+      (assoc transition
+        :db db
+        :sim sim))))
+
+(defn dispense [db]
+  (::env-atom (meta db)))
+
+(defn listen-env [db sim]
+  (ratom/cursor
+    (dispense db)
+    [(:db/id (d/entity db sim)) :env]))
+
+(defmethod intent2 ::animate-sims
+  [db _ _]
+  (let [{:keys [db/id
+                onyx.sim/animation-transitions
+                onyx.sim/frames-between-animation
+                onyx.sim/frames-since-last-animation
+                onyx.sim/touch]}
+        (d/pull db [:db/id
+                    :onyx.sim/animation-transitions
+                    :onyx.sim/frames-between-animation
+                    :onyx.sim/frames-since-last-animation
+                    :onyx.sim/touch] [:onyx/name :onyx.sim/settings])
+        animate? (= (or frames-since-last-animation 0) (or frames-between-animation 0))]
+    (into
+      [[:db/add id :onyx.sim/touch (not touch)]]
+      (if-not animate?
+        [[:db/add id :onyx.sim/frames-since-last-animation (inc frames-since-last-animation)]]
+        (into
+          [[:db/add id :onyx.sim/frames-since-last-animation 0]]
+          (for [[sim transitions] (d/q transitions-query db)]
+            [:db/add sim :onyx.sim/transitions (into transitions animation-transitions)]))))))
+
+(defn stop-animate-sims! [conn]
+  (d/transact!
+    conn
+    [[:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/animating? false]]))
+
+(defn sim! [conn]
+;;   (log/info "sim!")
+  ;; ???: env snapshotting of transactions? Those ticks are gonna add up.
+  ;; ???: support undo transitions?
+  (swap!
+    conn
+    vary-meta
+    (fn [m]
+      (assoc
+        (or m {})
+        ::env-atom
+        (r/atom {}))))
+  (ds/listen!
+    conn
+    ::envs
+    (fn [{:as report :keys [db-before db-after]}]
+      (let [env-atom (dispense db-after)
+            sim->tss (d/q transitions-query db-after)]
+;;         (log/info "env-atom" env-atom sim->tss)
+        (swap!
+          env-atom
+          (fn [envs]
+;;             (log/info "reducing-tss")
+            (reduce
+              (fn [envs [sim tss-after]]
+;;                 (log/info "tss-sim" sim tss-after)
+                (let [{:keys [env transitions]} (get envs sim)]
+;;                   (log/info "tss" {:before transitions
+;;                                    :after tss-after})
+                  (if (= transitions tss-after)
+                    envs
+                    (let [new-tss (transitions-diff transitions tss-after)]
+;;                       (log/info "new-tss" new-tss)
+                      (assoc
+                        envs
+                        sim
+                        {:env (reduce (sim-transitioner db-after sim) env new-tss)
+                         :transitions tss-after})))))
+              envs
+              sim->tss))))))
+  (ds/listen!
+    conn
+    ::animating
+    (fn [{:as report :keys [db-before db-after]}]
+      (let [settings-before (d/entity db-before [:onyx/name :onyx.sim/settings])
+            settings-after  (d/entity db-after [:onyx/name :onyx.sim/settings])
+            animating? (:onyx.sim/animating? settings-after)
+            was-animating? (:onyx.sim/animating? settings-before)
+            touched? (not= (:onyx.sim/touch settings-before) (:onyx.sim/touch settings-after))
+            start-animating? (and (not was-animating?) animating?)]
+        (when (or start-animating? (and animating? touched?))
+          ;; TODO: schedule a callback when frames-between-animation is large instead of using r/next-tick
+          (r/next-tick #(dispatch! conn {:dat.view/handler ::animate-sims})))))))
+
+(defn unsim! [conn]
+  (stop-animate-sims! conn)
+  (swap!
+    conn
+    vary-meta
+    dissoc
+    ::env-atom)
+  (ds/unlisten! conn ::envs)
+  (ds/unlisten! conn ::animating))
+
+;; TODO: catch and display simulator errors.
+
+(defmulti intent (fn [_ seg]
+                   (let [intention (:onyx/type seg)]
+                     (assert intention "No :onyx/type set for intent.")
+                     ;; (log/debug seg "Intenting" intention)
+                     intention)))
 
 (defn dispatch-transition! [conn {:as event} & inputs]
   (d/transact!
@@ -90,7 +214,7 @@
         [;[:db/retract id :onyx.sim/pause-count pause-count]
          [:db/add id :onyx.sim/pause-count next-pause-count]]
         (pull-and-transition-env db id (repeat tick-count onyx/tick)))
-      (catch #?(:clj Error :cljs :default) e
+      (catch :default e
         [[:db/add id :onyx.sim/debugging? true]]))))
 
 (defn db-onyx-tick
@@ -217,18 +341,16 @@
   [db {:keys [:onyx.sim/sim]}]
   (pull-and-transition-env db sim onyx/drain))
 
-#?(:cljs
-(defn run-sim
-  "DEPRECATED"
-  [conn sim]
-  ;; causes multi-ticking for all sims if one is running
-  (let [running? (:onyx.sim/running? (d/entity @conn sim))]
-    (when running?
-      ;; FIXME: upgrade performance by doing everything inline
-      (dispatch conn {:onyx/type :reagent/next-tick})
-      (r/next-tick #(run-sim conn sim))))))
+;; (defn run-sim
+;;   "DEPRECATED"
+;;   [conn sim]
+;;   ;; causes multi-ticking for all sims if one is running
+;;   (let [running? (:onyx.sim/running? (d/entity @conn sim))]
+;;     (when running?
+;;       ;; FIXME: upgrade performance by doing everything inline
+;;       (dispatch conn {:onyx/type :reagent/next-tick})
+;;       (r/next-tick #(run-sim conn sim)))))
 
-#?(:cljs
 (defn run-sims [conn]
   (let [running? (d/q '[:find ?running .
                         :where
@@ -236,33 +358,57 @@
                       @conn)]
     (when running?
       (d/transact! conn [[:db.fn/call db-onyx-tick]])
-      (r/next-tick #(run-sims conn))))))
+      (r/next-tick #(run-sims conn)))))
 
 (defmethod intent
   :onyx.api/start
   [conn {:keys [:onyx.sim/sim]}]
-  #?(:cljs
-      (do
-        (d/transact! conn [[:db/add sim :onyx.sim/running? true]])
-        (run-sims conn))
-      :clj (throw (ex-info "Cannot start simulator in clojure. Only implemented in cljs."))))
+  (do
+    (d/transact! conn [[:db/add sim :onyx.sim/running? true]])
+    (run-sims conn)))
 
-(defmethod intent
-  :onyx.api/stop
-  [db {:keys [:onyx.sim/sim]}]
-  [[:db/add sim :onyx.sim/running? false]])
+(defn sim-or-selected [db sim]
+  (or (d/entity db sim)
+      (-> db
+          (d/entity [:onyx/name :onyx.sim/settings])
+          :onyx.sim/selected-sim)))
 
-(defmethod intent
-  :onyx.sim/toggle-play
-  [conn {:keys [:onyx.sim/sim]}]
-  (let [running? (:onyx.sim/running? (d/entity @conn sim))]
-    (if running?
-      (d/transact! conn [[:db/add sim :onyx.sim/running? false]])
-      #?(:cljs
-          (do
-            (d/transact! conn [[:db/add sim :onyx.sim/running? true]])
-            (run-sim conn sim))
-          :clj (throw "Cannot start simulator in clojure. Only implemented in cljs.")))))
+(defmethod intent2
+  ::toggle-play
+  [db {:keys [onyx.sim/sim]} _]
+  (let [sim (sim-or-selected db sim)
+        sim-id (:db/id sim)
+        was-running? (:onyx.sim/running? sim)
+        is-running? (not was-running?)
+        ;; TODO: last-to-stop? should check all sims to see if they are running
+        animating? (:onyx.sim/animating? (d/entity db [:onyx/name :onyx.sim/settings]))
+        last-to-stop? was-running?
+        first-to-start? is-running?]
+    (log/info "toggle-event" {:first first-to-start? :last last-to-stop?})
+    (cat-into
+      [[:db/retract sim-id :onyx.sim/running? was-running?]
+       [:db/add sim-id :onyx.sim/running? is-running?]]
+      (when last-to-stop?
+        [[:db/retract [:onyx/name :onyx.sim/settings] :onyx.sim/animating? true]
+         [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/animating? false]])
+      (when first-to-start?
+        [[:db/retract [:onyx/name :onyx.sim/settings] :onyx.sim/animating? false]
+         [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/animating? true]]))))
+
+;; (defmethod intent
+;;   :onyx.api/stop
+;;   [db {:keys [:onyx.sim/sim]}]
+;;   [[:db/add sim :onyx.sim/running? false]])
+
+;; (defmethod intent
+;;   :onyx.sim/toggle-play
+;;   [conn {:keys [:onyx.sim/sim]}]
+;;   (let [running? (:onyx.sim/running? (d/entity @conn sim))]
+;;     (if running?
+;;       (d/transact! conn [[:db/add sim :onyx.sim/running? false]])
+;;           (do
+;;             (d/transact! conn [[:db/add sim :onyx.sim/running? true]])
+;;             (run-sim conn sim)))))
 
 (defmethod intent
   :onyx.sim/select-view
@@ -274,7 +420,7 @@
       :onyx.sim/selected-view :onyx.sim/sim-view}]))
 
 (defmethod intent2
-  :onyx.sim.event/select-view
+  ::select-view
   [db _ [selected]]
   (if (keyword? selected)
     [[:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-view selected]]
@@ -285,18 +431,13 @@
 (defmethod intent2
   ::transitions
   [db {:as event :keys [onyx.sim/sim onyx.sim/transitions]} _]
-  (let [sim (:db/id
-              (or (d/entity db sim)
-                (-> db
-                    (d/entity [:onyx/name :onyx.sim/settings])
-                    :onyx.sim/selected-sim)))
+  (let [sim (:db/id (sim-or-selected db sim))
         tss (-> db
                 (d/entity sim)
                 :onyx.sim/transitions)]
     [[:db/retract sim :onyx.sim/transitions tss]
      [:db/add sim :onyx.sim/transitions (into tss transitions)]]))
 
-#?(:cljs
 (defmethod intent
   :onyx.sim.event/import-segments
   [conn {:keys [onyx.sim/sim onyx.sim/task-name]}]
@@ -306,5 +447,5 @@
           (log/debug "edn is...\n" (ppr-str (:body response)))
           (d/transact! conn [[:db.fn/call pull-and-transition-env sim
                                (for [seg (:body response)]
-                                 #(onyx/new-segment % task-name seg))]]))))))
+                                 #(onyx/new-segment % task-name seg))]])))))
 
