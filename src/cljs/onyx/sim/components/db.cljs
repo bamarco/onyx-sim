@@ -25,26 +25,14 @@
   (let [conn (ds/create-conn sim/ds-schema)
         tx-meta {:datascript.db/tx-middleware event/tx-middleware}]
     (p/posh! conn)
-;;     (d/transact! conn sim/base-ui2 tx-meta)
     (d/transact! conn sim/base-ui)
     (event/sim! conn)
-;;     (d/transact! conn sim/base-ui2 {:datascript.db/tx-middleware d/mw-keep-meta})
     (d/transact! conn sim/examples tx-meta)
-;;     (d/transact! conn (dat.view/example))
-;;     (d/transact! conn [(dat.view/simulator
-;;                          {:onyx.sim/sim [:onyx/name :dat.view/sim]
-;;                           :dat.sync.db/conn conn})])
-;;     (d/transact!
-;;       conn
-;;       [[:onyx.sim.api/transition
-;;         {:sim [:onyx/name :dat.view/sim]
-;;          :event :onyx.sim.api/init
-;;          :conn conn}]
-;;        [:onyx.sim.api/transition
-;;         {:sim [:onyx/name :dat.view/sim]
-;;          :event :onyx.sim.api/inputs
-;;          :inputs {:dat.view/render [{:dat.view/route :dat.view.route/todos}]}}]]
-;;       tx-meta)
+    (d/transact! conn [(dat.view/simulator
+                         {:onyx.sim/sim [:onyx/name :dat.view/sim]
+                          :dat.sync.db/conn conn})]
+                 tx-meta)
+    (d/transact! conn (dat.view/example) tx-meta)
     conn))
 
 (defrecord KnowledgeBase [conn]
