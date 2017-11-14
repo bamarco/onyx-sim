@@ -66,40 +66,6 @@
                                 :onyc.core/metadata        :metadata
                                 :onyx.core/flow-conditions :flow-conditions})))
 
-;; (defn init-segments [{:as sim :keys [onyx.sim/env onyx.sim/inputs]}]
-;;   (if-not inputs
-;;     sim
-;;     (assoc
-;;       sim
-;;       :onyx.sim/env
-;;       (reduce
-;;         (fn [env [task-name segments]]
-;;           (reduce
-;;             #(onyx/new-segment %1 task-name %2)
-;;             env
-;;             segments))
-;;         env
-;;         inputs))))
-
-;; (defn init-job [{:as sim :keys [onyx.core/job]}]
-;;   (let [env (onyx/init (ds->onyx job))]
-;;     (assoc
-;;       sim
-;;       :onyx.sim/env env
-;;       :onyx.sim/clean-env env)))
-
-;; (defn make-sim [& {:as options}]
-;;   (->
-;;     (into
-;;       default-sim
-;;       (clojure.set/rename-keys options {:job :onyx.core/job
-;;                                         :name :onyx/name
-;;                                         :title :onyx.sim/title
-;;                                         :description :onyx.sim/description
-;;                                         :inputs :onyx.sim/inputs}))
-;;     init-job
-;;     init-segments))
-
 (defn init-env [{:as sim :keys [onyx.core/job onyx.sim/transitions]}]
   (assoc
     sim
@@ -108,7 +74,7 @@
             :job (ds->onyx job)}]
           transitions)))
 
-(defn make-sim2 [& {:as options}]
+(defn make-sim [& {:as options}]
   (->
     (into
       default-sim
@@ -428,56 +394,6 @@
 ;;;
 ;;; Simulator Examples
 ;;;
-;; (def base-ui
-;;   (into
-;;     control-catalog
-;;     [(make-sim
-;;        :name ::hello-sim
-;;        :title "Hello Sim!"
-;;        :description (:onyx/doc onyx.sim.examples.hello/job)
-;;        :job onyx.sim.examples.hello/job
-;;        :inputs {:in onyx.sim.examples.hello/input-segments})
-;;      (make-sim
-;;        :name :flow-short-circuit
-;;        :job onyx.sim.examples.flow-short-circuit/job
-;;        :title "Flow Short Circuit"
-;;        :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job)
-;;        :inputs {:in onyx.sim.examples.flow-short-circuit/input-segments})
-;;      {:onyx/name :onyx.sim/settings
-;;       :onyx.sim/selected-view :onyx.sim/sim-view
-;;       :onyx.sim/selected-sim [:onyx/name ::hello-sim]}]))
-
-;; (def base-ui2
-;;   (into
-;;     control-catalog
-;;     [(make-sim2
-;;        :name ::hello-sim
-;;        :title "Hello Sim!"
-;;        :description (:onyx/doc onyx.sim.examples.hello/job)
-;;        :job onyx.sim.examples.hello/job)
-;;      [:onyx.sim.api/transition
-;;       {:event :onyx.sim.api/init
-;;        :sim [:onyx/name ::hello-sim]}]
-;;      [:onyx.sim.api/transition
-;;       {:event :onyx.sim.api/inputs
-;;        :sim [:onyx/name ::hello-sim]
-;;        :inputs {:in onyx.sim.examples.hello/input-segments}}]
-;;      (make-sim2
-;;        :name :flow-short-circuit
-;;        :job onyx.sim.examples.flow-short-circuit/job
-;;        :title "Flow Short Circuit"
-;;        :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job))
-;;      [:onyx.sim.api/transition
-;;       {:event :onyx.sim.api/init
-;;        :sim [:onyx/name :flow-short-circuit]}]
-;;      [:onyx.sim.api/transition
-;;       {:event :onyx.sim.api/inputs
-;;        :sim [:onyx/name :flow-short-circuit]
-;;        :inputs {:in onyx.sim.examples.flow-short-circuit/input-segments}}]
-;;      {:onyx/name :onyx.sim/settings
-;;       :onyx.sim/selected-view :onyx.sim/sim-view
-;;       :onyx.sim/selected-sim [:onyx/name ::hello-sim]}]))
-
 (def base-ui
   (into
     control-catalog
@@ -488,14 +404,14 @@
       :onyx.sim/animating? false}]))
 
 (def examples
-  [(make-sim2
+  [(make-sim
        :name ::hello-sim
        :title "Hello Sim!"
        :description (:onyx/doc onyx.sim.examples.hello/job)
        :job onyx.sim.examples.hello/job
        :transitions [{:event :onyx.sim.api/inputs
                       :inputs {:in onyx.sim.examples.hello/input-segments}}])
-     (make-sim2
+     (make-sim
        :name :flow-short-circuit
        :job onyx.sim.examples.flow-short-circuit/job
        :title "Flow Short Circuit"

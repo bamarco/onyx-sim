@@ -418,7 +418,7 @@
      :flow/short-circuit? true}]})
 
 (defn simulator [{:as resources :keys [dat.sync.db/conn onyx.sim/sim]}]
-  (sim/make-sim2
+  (sim/make-sim
     :name :dat.view/sim
     :title "Dat View Simulator"
     :description "This will simulate the compute graph for dat view."
