@@ -24,7 +24,6 @@
                  [org.clojure/tools.namespace "0.2.11"]
                  [reagent "0.6.0"]
                  [posh "0.5.5"]
-                 [datsync "0.0.1-alpha3"]
                  [com.taoensso/timbre "4.8.0"]
                  [org.onyxplatform/onyx-spec "0.11.0.2"]
                  [org.onyxplatform/onyx-local-rt "0.11.0.0-alpha5"]]
@@ -37,9 +36,7 @@
 
   :min-lein-version "2.6.1"
 
-  :source-paths ["src/clj" "src/cljs" "src/cljc"
-                 "checkouts/datsync/src/clj"
-                 "checkouts/datsync/src/cljc"]
+  :source-paths ["src/clj" "src/cljs" "src/cljc"]
 
   :test-paths ["test/clj" "test/cljc"]
 
@@ -58,8 +55,6 @@
   :cljsbuild {:builds
               [{:id "app"
                 :source-paths ["src/cljs" "src/cljc"
-                               "checkouts/datsync/src/cljs"
-                               "checkouts/datsync/src/cljc"
                                "dev"]
 
                 :figwheel {:on-jsload "onyx.sim.system/reset"}

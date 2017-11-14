@@ -428,8 +428,7 @@
            (fn [lifecycles]
              (for [lc lifecycles]
                (with-meta lc resources))))
-    :transitions [{:event :onyx.sim.api/init}
-                  {:event :onyx.sim.api/inputs
+    :transitions [{:event :onyx.sim.api/inputs
                    :inputs {:dat.view/render
                             [{:dat.view/route :dat.view.route/todos}
                              {:dat.view/route :dat.view.route/index}]}}]))

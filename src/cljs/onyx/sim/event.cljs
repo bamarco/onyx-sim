@@ -1,7 +1,6 @@
 (ns onyx.sim.event
   (:require [taoensso.timbre :as log]
-            [dat.sync.db :as d :refer [pull q]]
-            [datascript.core :as ds]
+            [datascript.core :as d]
             [onyx.sim.api :as onyx]
             [reagent.ratom :as ratom]
             [onyx.sim.utils :as utils :refer [ppr-str cat-into]]
@@ -16,7 +15,7 @@
                      ;; (log/debug seg "Intenting" intention)
                      intention)))
 
-(def tx-middleware d/mw-keep-meta)
+(def tx-middleware datascript.db/keep-meta-middleware)
 
 (defn dispatch! [conn {:as event} & inputs]
   (d/transact!
@@ -45,14 +44,6 @@
               {:transitions-before transitions-before
                :transitions-after transitions-after}))
     new-tss))
-
-(defn sim-transitioner [db sim]
-  (fn [env transition]
-    (onyx/transition-env
-      env
-      (assoc transition
-        :db db
-        :sim sim))))
 
 (defn dispense [db]
   (::env-atom (meta db)))
@@ -105,12 +96,13 @@
         (or m {})
         ::env-atom
         (r/atom {}))))
-  (ds/listen!
+  (d/listen!
     conn
     ::envs
     (fn [{:as report :keys [db-before db-after]}]
       (let [env-atom (dispense db-after)
             sim->tss (d/q transitions-query db-after)]
+;;         (log/info "sim->tss" sim->tss)
         (swap!
           env-atom
           (fn [envs]
@@ -120,14 +112,15 @@
                   (if (= transitions tss-after)
                     envs
                     (let [new-tss (transitions-diff transitions tss-after)]
+                      (log/info "tss-after" tss-after)
                       (assoc
                         envs
                         sim
-                        {:env (reduce (sim-transitioner db-after sim) env new-tss)
+                        {:env (reduce onyx/transition-env env new-tss)
                          :transitions tss-after})))))
               envs
               sim->tss))))))
-  (ds/listen!
+  (d/listen!
     conn
     ::animating
     (fn [{:as report :keys [db-before db-after]}]
@@ -148,8 +141,8 @@
     vary-meta
     dissoc
     ::env-atom)
-  (ds/unlisten! conn ::envs)
-  (ds/unlisten! conn ::animating))
+  (d/unlisten! conn ::envs)
+  (d/unlisten! conn ::animating))
 
 (defn ^:export simple-toggle [db {:keys [dat.view/entity dat.view/attr]}]
   (let [old-value (attr (d/entity db entity))

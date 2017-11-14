@@ -4,13 +4,11 @@
             [onyx.sim.flui :as flui]
             [onyx.sim.control :as control]
             [onyx.sim.svg :as svg]
-            [dat.sync.db.posh]
-            [dat.sync.db :as d]
             [clojure.core.async :as async]
             [clojure.spec.alpha :as s]
-            [onyx.sim.event :as event :refer [dispatch raw-dispatch]]
+            [onyx.sim.event :as event]
             [onyx.sim.utils :as utils :refer [cat-into]]
-            [datascript.core :as ds]
+            [datascript.core :as d]
             [onyx.sim.examples.flow-short-circuit]
             [onyx.sim.examples.hello]
             [posh.reagent :as posh]
@@ -56,7 +54,17 @@
    :onyx.sim/running? false
    :onyx.sim/hidden-tasks #{}})
 
-(def ds->onyx onyx/ds->onyx)
+
+(defn ds->onyx [sim-job]
+  (-> sim-job
+      (clojure.set/rename-keys {:onyx.core/catalog         :catalog
+                                :onyx.core/workflow        :workflow
+                                :onyx.core/lifecycles      :lifecycles
+                                :onyx.core/windows         :windows
+                                :onyx.core/triggers        :triggers
+                                :onyx.core/task-scheduler  :task-scheduler
+                                :onyc.core/metadata        :metadata
+                                :onyx.core/flow-conditions :flow-conditions})))
 
 ;; (defn init-segments [{:as sim :keys [onyx.sim/env onyx.sim/inputs]}]
 ;;   (if-not inputs
@@ -92,6 +100,14 @@
 ;;     init-job
 ;;     init-segments))
 
+(defn init-env [{:as sim :keys [onyx.core/job onyx.sim/transitions]}]
+  (assoc
+    sim
+    :onyx.sim/transitions
+    (into [{:event :onyx.sim.api/init
+            :job (ds->onyx job)}]
+          transitions)))
+
 (defn make-sim2 [& {:as options}]
   (->
     (into
@@ -100,7 +116,8 @@
                                         :name :onyx/name
                                         :title :onyx.sim/title
                                         :description :onyx.sim/description
-                                        :transitions :onyx.sim/transitions}))))
+                                        :transitions :onyx.sim/transitions}))
+    init-env))
 
 (defn pull-q [pull-expr query conn & input]
   (map (fn [[eid]] @(posh/pull conn pull-expr eid)) @(apply posh/q query conn input)))
@@ -430,36 +447,36 @@
 ;;       :onyx.sim/selected-view :onyx.sim/sim-view
 ;;       :onyx.sim/selected-sim [:onyx/name ::hello-sim]}]))
 
-(def base-ui2
-  (into
-    control-catalog
-    [(make-sim2
-       :name ::hello-sim
-       :title "Hello Sim!"
-       :description (:onyx/doc onyx.sim.examples.hello/job)
-       :job onyx.sim.examples.hello/job)
-     [:onyx.sim.api/transition
-      {:event :onyx.sim.api/init
-       :sim [:onyx/name ::hello-sim]}]
-     [:onyx.sim.api/transition
-      {:event :onyx.sim.api/inputs
-       :sim [:onyx/name ::hello-sim]
-       :inputs {:in onyx.sim.examples.hello/input-segments}}]
-     (make-sim2
-       :name :flow-short-circuit
-       :job onyx.sim.examples.flow-short-circuit/job
-       :title "Flow Short Circuit"
-       :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job))
-     [:onyx.sim.api/transition
-      {:event :onyx.sim.api/init
-       :sim [:onyx/name :flow-short-circuit]}]
-     [:onyx.sim.api/transition
-      {:event :onyx.sim.api/inputs
-       :sim [:onyx/name :flow-short-circuit]
-       :inputs {:in onyx.sim.examples.flow-short-circuit/input-segments}}]
-     {:onyx/name :onyx.sim/settings
-      :onyx.sim/selected-view :onyx.sim/sim-view
-      :onyx.sim/selected-sim [:onyx/name ::hello-sim]}]))
+;; (def base-ui2
+;;   (into
+;;     control-catalog
+;;     [(make-sim2
+;;        :name ::hello-sim
+;;        :title "Hello Sim!"
+;;        :description (:onyx/doc onyx.sim.examples.hello/job)
+;;        :job onyx.sim.examples.hello/job)
+;;      [:onyx.sim.api/transition
+;;       {:event :onyx.sim.api/init
+;;        :sim [:onyx/name ::hello-sim]}]
+;;      [:onyx.sim.api/transition
+;;       {:event :onyx.sim.api/inputs
+;;        :sim [:onyx/name ::hello-sim]
+;;        :inputs {:in onyx.sim.examples.hello/input-segments}}]
+;;      (make-sim2
+;;        :name :flow-short-circuit
+;;        :job onyx.sim.examples.flow-short-circuit/job
+;;        :title "Flow Short Circuit"
+;;        :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job))
+;;      [:onyx.sim.api/transition
+;;       {:event :onyx.sim.api/init
+;;        :sim [:onyx/name :flow-short-circuit]}]
+;;      [:onyx.sim.api/transition
+;;       {:event :onyx.sim.api/inputs
+;;        :sim [:onyx/name :flow-short-circuit]
+;;        :inputs {:in onyx.sim.examples.flow-short-circuit/input-segments}}]
+;;      {:onyx/name :onyx.sim/settings
+;;       :onyx.sim/selected-view :onyx.sim/sim-view
+;;       :onyx.sim/selected-sim [:onyx/name ::hello-sim]}]))
 
 (def base-ui
   (into
@@ -476,16 +493,14 @@
        :title "Hello Sim!"
        :description (:onyx/doc onyx.sim.examples.hello/job)
        :job onyx.sim.examples.hello/job
-       :transitions [{:event :onyx.sim.api/init}
-                     {:event :onyx.sim.api/inputs
+       :transitions [{:event :onyx.sim.api/inputs
                       :inputs {:in onyx.sim.examples.hello/input-segments}}])
      (make-sim2
        :name :flow-short-circuit
        :job onyx.sim.examples.flow-short-circuit/job
        :title "Flow Short Circuit"
        :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job)
-       :transitions [{:event :onyx.sim.api/init}
-                     {:event :onyx.sim.api/inputs
+       :transitions [{:event :onyx.sim.api/inputs
                       :inputs {:in onyx.sim.examples.flow-short-circuit/input-segments}}])
    [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-sim [:onyx/name ::hello-sim]]
    [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-view :onyx.sim/sim-view]])
@@ -593,6 +608,7 @@
 (defn pretty-env [conn {:as seg :keys [onyx.sim/sim]}]
   (let [{:as env :keys [sorted-tasks]} @(pull-env conn sim)
         {:keys [onyx.sim/hidden-tasks]} @(posh/pull conn '[:onyx.sim/hidden-tasks] sim)]
+    (log/info "!!!env" sim env)
     [flui/v-box
       :class "onyx-env"
       :children
