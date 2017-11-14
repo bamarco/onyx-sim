@@ -22,9 +22,12 @@
 
 (defn create-conn2 []
   (let [conn (ds/create-conn sim/ds-schema)
-        tx-meta {:datascript.db/tx-middleware onyx.sim.api/middleware}]
+        tx-meta {:datascript.db/tx-middleware onyx.sim.api/tx-middleware}]
     (p/posh! conn)
-    (d/transact! conn sim/base-ui2 tx-meta)
+;;     (d/transact! conn sim/base-ui2 tx-meta)
+    (onyx/sim! conn)
+;;     (d/transact! conn sim/base-ui2 {:datascript.db/tx-middleware d/mw-keep-meta})
+    (d/transact! conn sim/base-ui3 tx-meta)
 ;;     (d/transact! conn (dat.view/example))
 ;;     (d/transact! conn [(dat.view/simulator
 ;;                          {:onyx.sim/sim [:onyx/name :dat.view/sim]

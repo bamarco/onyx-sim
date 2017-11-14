@@ -2,8 +2,10 @@
   (:require [taoensso.timbre :as log]
             [onyx-local-rt.api :as onyx]
             #?(:cljs [reagent.ratom :as ratom])
+            #?(:cljs [reagent.core :refer [atom]])
             [onyx.static.util :as util]
             [dat.sync.db :as d]
+            [datascript.core :as ds]
             [onyx.sim.utils #?@(:clj (:refer [xfn])
                                      :cljs (:refer-macros [xfn]))]))
 
@@ -62,7 +64,9 @@
                      [meta-key]
                      (fn [env]
                        (meta-fn env db-after (rest tx)))))]
-    (log/info "db-after")
+    (log/info "meta-db-after" (get-in
+                                (meta db-after)
+                                [::transition 16 :tasks :hello :inbox]))
     (assoc
       report
       :db-after
@@ -76,6 +80,7 @@
 (defn meta-transactor
   "This allows you to have plain clojure data that shares a transactor with the db-conn."
   [transact meta-key meta-reducing-fn]
+  ;; ???: store the meta as a ratom instead?
   (fn [report txs]
     (reduce
       (fn [report tx]
@@ -103,7 +108,117 @@
            (log/info ::transition transition)
            cache-after))))
 
+(defn sim-tx? [tx]
+  (and
+    (map? tx)
+    (= (:dat.view/handler tx) ::transition)))
+
+(defn sim-transitioner [db sim]
+  (fn [env transition]
+    (log/info "transitioning")
+    (onyx/transition-env
+      env
+      (assoc transition
+        :db db
+        :sim sim))))
+
+(defn mw-transition2
+  [transact]
+  (fn [report txs]
+    (log/info "mw-transition2")
+    ;; ***TODO: This middleware cannot handle :db.fn/call. Need to switch all datascript middleware to transducers that work on a single tx at a time.
+    ;;  - uuident-all-the-things will work by completing with the uuident-txs
+    ;;  - globalize will work easily
+    ;;  - groupby won't work easily, but not used anymore i think
+    ;;  - db.fn/call becomes a reduce
+    ;;  - this mw can run in logging mode and let the txs tx through, but with an order attr appended. or normal mode where they are txacted into the meta-env only
+    ;;  ???: keep env-values as meta-data on the db. then reset! it into the atom after the fact
+    (let [{:as report :keys [db-before db-after]} (transact report (remove sim-tx? txs))
+          env-atom (or (::env-atom (meta db-before))
+                       (atom {}))
+          transitions (filter sim-tx? txs)]
+      (assoc
+        report
+        :db-after (vary-meta
+                    db-after
+                    #(assoc
+                       (or % {})
+                       ::env-atom
+                       env-atom))
+        :onyx.sim.api/transitions transitions))))
+
 (def middleware (comp mw-transition d/mw-keep-meta))
+
+(def tx-middleware d/mw-keep-meta)
+
+(def transitions-query '[:find ?sim ?transitions
+                        :in $
+                        :where
+                        [?sim :onyx/type :onyx.sim/sim]
+                        [?sim :onyx.sim/transitions ?transitions]])
+
+(defn transitions-diff [transitions-before transitions-after]
+  (let [[old-tss new-tss] (split-at (count transitions-before) transitions-after)]
+;;     (log/info "tss-diff" {:before transitions-before
+;;                           :after transitions-after
+;;                           :old old-tss
+;;                           :new new-tss})
+    (assert (or (not transitions-before)
+                (= old-tss transitions-before))
+            (ex-info
+              "Transition diff is unsafe"
+              {:transitions-before transitions-before
+               :transitions-after transitions-after}))
+    new-tss))
+
+(defn dispense [db]
+  (::env-atom (meta db)))
+
+(defn sim! [conn]
+  ;; ???: env snapshotting of transactions? Those ticks are gonna add up.
+  ;; ???: support undo transitions?
+  (swap!
+    conn
+    vary-meta
+    (fn [m]
+      (assoc
+        (or m {})
+        ::env-atom
+        (atom {}))))
+  (ds/listen!
+    conn
+    :onyx.sim.api/envs
+    (fn [{:as report :keys [db-before db-after]}]
+      (let [env-atom (dispense db-after)
+            sim->tss (d/q transitions-query db-after)]
+;;         (log/info "env-atom" env-atom sim->tss)
+        (swap!
+          env-atom
+          (fn [envs]
+;;             (log/info "reducing-tss")
+            (reduce
+              (fn [envs [sim tss-after]]
+                (log/info "tss-sim" sim tss-after)
+                (let [{:keys [env transitions]} (get envs sim)]
+;;                   (log/info "tss" {:before transitions
+;;                                    :after tss-after})
+                  (if (= transitions tss-after)
+                    envs
+                    (let [new-tss (transitions-diff transitions tss-after)]
+;;                       (log/info "new-tss" new-tss)
+                      (assoc
+                        envs
+                        sim
+                        {:env (reduce (sim-transitioner db-after sim) env new-tss)
+                         :transitions tss-after})))))
+              envs
+              sim->tss)))))))
+
+#?(:cljs
+(defn listen-env [db sim]
+  (ratom/cursor
+    (dispense db)
+    [(:db/id (d/entity db sim)) :env])))
 
 (defn out
   "Returns outputs of onyx job presumably after draining."
@@ -136,11 +251,23 @@
     (range 1000)))
 
 (defn remove-segment [env output-task segment]
-  (onyx/transition-env env {:event :remove-segment
+  (onyx/transition-env env {:event ::remove-segment
                             :task output-task
                             :segment segment}))
 
-(defmethod onyx/transition-env :remove-segment
+(defmethod onyx/transition-env ::step
+  [env _]
+  (step env))
+
+(defmethod onyx/transition-env ::tick
+  [env _]
+  (onyx/tick env))
+
+(defmethod onyx/transition-env ::drain
+  [env _]
+  (onyx/drain env))
+
+(defmethod onyx/transition-env ::remove-segment
   [env {:keys [task segment]}]
   (update-in env [:tasks task :outputs] (partial into [] (remove #(= segment %)))))
 
@@ -152,6 +279,3 @@
           (remove-segment :render selection)))
     env
     selections))
-
-
-

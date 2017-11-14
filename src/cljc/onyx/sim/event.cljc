@@ -32,7 +32,13 @@
 ;;     {:datascript.db/tx-middleware onyx/middleware}))
 
 (defn dispatch! [conn {:as event} & inputs]
-  (intent2 conn event inputs))
+  (d/transact!
+    conn
+    [[:db.fn/call
+      intent2
+      event
+      inputs]]
+    {:datascript.db/tx-middleware onyx/tx-middleware}))
 
 (defn dispatch-transition! [conn {:as event} & inputs]
   (d/transact!
@@ -109,10 +115,8 @@
 
 (defmethod intent2
   ::simple-toggle
-  [conn event _]
-  (d/transact!
-    conn
-    [[:db.fn/call simple-toggle event]]))
+  [db event _]
+  [[:db.fn/call simple-toggle event]])
 
 (defn ^:export simple-value [db {:keys [dat.view/entity dat.view/attr dat.view/value]}]
   (let [old-value (attr (d/entity db entity))]
@@ -121,10 +125,8 @@
 
 (defmethod intent2
   ::simple-value
-  [conn event [value]]
-  (d/transact!
-    conn
-    [[:db.fn/call simple-value (assoc event :dat.view/value value)]]))
+  [db event [value]]
+    [[:db.fn/call simple-value (assoc event :dat.view/value value)]])
 
 (defmethod intent
   :reagent/next-tick
@@ -167,14 +169,12 @@
 
 (defmethod intent2
   :onyx.sim.event/hide-tasks
-  [conn event input]
-  (d/transact!
-    conn
-    [[:db.fn/call
-      hide-tasks
-      (assoc
-        event
-        :onyx.sim/task-names input)]]))
+  [db event input]
+  [[:db.fn/call
+    hide-tasks
+    (assoc
+      event
+      :onyx.sim/task-names input)]])
 
 (defmethod intent
   :onyx.sim.event/hide-task
@@ -275,14 +275,26 @@
 
 (defmethod intent2
   :onyx.sim.event/select-view
-  [conn _ [selected]]
-  (d/transact!
-    conn
-    (if (keyword? selected)
-      [[:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-view selected]]
-      [{:db/id [:onyx/name :onyx.sim/settings]
-        :onyx.sim/selected-sim selected
-        :onyx.sim/selected-view :onyx.sim/sim-view}])))
+  [db _ [selected]]
+  (if (keyword? selected)
+    [[:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-view selected]]
+    [{:db/id [:onyx/name :onyx.sim/settings]
+      :onyx.sim/selected-sim selected
+      :onyx.sim/selected-view :onyx.sim/sim-view}]))
+
+(defmethod intent2
+  ::transitions
+  [db {:as event :keys [onyx.sim/sim onyx.sim/transitions]} _]
+  (let [sim (:db/id
+              (or (d/entity db sim)
+                (-> db
+                    (d/entity [:onyx/name :onyx.sim/settings])
+                    :onyx.sim/selected-sim)))
+        tss (-> db
+                (d/entity sim)
+                :onyx.sim/transitions)]
+    [[:db/retract sim :onyx.sim/transitions tss]
+     [:db/add sim :onyx.sim/transitions (into tss transitions)]]))
 
 #?(:cljs
 (defmethod intent

@@ -35,7 +35,7 @@
 
 (defn pull-control [conn control-name]
   (let [control (pull conn '[*] [:control/name control-name])]
-    (log/info "compile-control" control)
+;;     (log/info "compile-control" control)
     (compile-control conn control)))
 
 (defn ^:export control-attr [conn control-name attr]
@@ -77,11 +77,11 @@
    :label (control-attr conn control-name :control/label)])
 
 (defn action-button [conn control-name]
-  (let [{:keys [:control/disabled? :control/action :control/label]} (pull-control conn control-name)]
+  (let [{:keys [control/disabled? control/action control/label dat.view/event]} (pull-control conn control-name)]
     [flui/button
      :label label
      :disabled? disabled?
-     :on-click action]))
+     :on-click (partial event/dispatch! conn event)]))
 
 (defn toggle-button [conn control-name]
   (let [{:keys [control/label control/toggle-label control/toggled? dat.view/event]} (pull-control conn control-name)]

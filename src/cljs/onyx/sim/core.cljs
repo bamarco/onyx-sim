@@ -37,18 +37,7 @@
    :input onyx-gray
    :output onyx-green})
 
-(defn printable-seg
-  "Right now segments can contain the conn. This causes printing to fail because of a circular object since the conn also holds the segments in the onyx task tray."
-  [seg]
-  ;; TODO: It is probably bad in general to have an atom hold a reference to itself. Solutions?
-  ;;       - originally I set it up for onyx lifecycle to search for the conn from the system itself. I think this caused situations where the lifecycle runs before the conn exists. With this method it should be possible to transition into using the value of the db instead and building a query graph as opposed to using a conn and posh (or perhaps creating a onyx plugin for posh).
-  ;; TODO: genericize the concept of a segment print filter so any package can simplify noisy segments to small readable ones.
-  (update-in
-    seg
-    [:dat.sync.db/conn]
-    boolean))
-
-(defn pull-env [conn sim-id]
+(defn pull-env-deprecated [conn sim-id]
   (ratom/make-reaction
     (fn []
       (let [db @conn]
@@ -57,6 +46,9 @@
           meta
           :onyx.sim.api/transition
           (get (:db/id (d/entity db sim-id))))))))
+
+(defn pull-env [conn sim-id]
+  (onyx/listen-env @conn sim-id))
 
 (def default-sim
   {:onyx/type :onyx.sim/sim
@@ -109,7 +101,7 @@
                                         :name :onyx/name
                                         :title :onyx.sim/title
                                         :description :onyx.sim/description
-                                        :inputs :onyx.sim/inputs}))))
+                                        :transitions :onyx.sim/transitions}))))
 
 (defn pull-q [pull-expr query conn & input]
   (map (fn [[eid]] @(posh/pull conn pull-expr eid)) @(apply posh/q query conn input)))
@@ -167,7 +159,7 @@
     :new-sim/env-display-style [:onyx/name :new-sim/pretty-env]
     :new-sim/env-display-options [[:onyx/name :new-sim/render-segments]]
     :new-sim/show-task-hider? true
-    :new-sim/show-sim-description? false
+    :new-sim/show-sim-description? true
     :new-sim/show-next-action? true}
    {:onyx/name :new-sim.sub/settings
     :onyx/type :function
@@ -210,7 +202,6 @@
      :control/name :onyx.sim/nav
      :control/label "Navigation"
      :control/chosen (::selected-nav)
-     :control/choose (::select-view)
      :dat.view/event {:dat.view/handler :onyx.sim.event/select-view}
      :control/choices (::view-choices)}
     {:control/type :active-logo
@@ -229,7 +220,7 @@
      :dat.view/event {:dat.view/handler :onyx.sim.event/simple-toggle
                       :dat.view/entity [:control/name :onyx.sim/description?]
                       :dat.view/attr :control/toggled?}
-     :control/toggled? false}
+     :control/toggled? true}
     {:control/type :toggle
      :control/name :onyx.sim/hidden?
      :control/label "Show Task Hider"
@@ -279,17 +270,23 @@
     {:control/type :action
      :control/name :onyx.api/tick
      :control/label "Tick"
-     :control/action (::tick)
+     :dat.view/event {:dat.view/handler :onyx.sim.event/transitions
+                      :onyx.sim/transitions [{:event :onyx.sim.api/tick}]}
+;;      :control/action (::tick)
      :control/disabled? (::running?)}
     {:control/type :action
      :control/name :onyx.api/step
      :control/label "Step"
-     :control/action (::step)
+;;      :control/action (::step)
+     :dat.view/event {:dat.view/handler :onyx.sim.event/transitions
+                      :onyx.sim/transitions [{:event :onyx.sim.api/step}]}
      :control/disabled? (::running?)}
     {:control/type :action
      :control/name :onyx.api/drain
      :control/label "Drain"
-     :control/action (::drain)
+;;      :control/action (::drain)
+     :dat.view/event {:dat.view/handler :onyx.sim.event/transitions
+                      :onyx.sim/transitions [{:event :onyx.sim.api/drain}]}
      :control/disabled? (::running?)}
     {:control/type :toggle
      :control/name :onyx.sim/play
@@ -473,6 +470,27 @@
       :onyx.sim/selected-view :onyx.sim/sim-view
       :onyx.sim/selected-sim [:onyx/name ::hello-sim]}]))
 
+(def base-ui3
+  (into
+    control-catalog
+    [(make-sim2
+       :name ::hello-sim
+       :title "Hello Sim!"
+       :description (:onyx/doc onyx.sim.examples.hello/job)
+       :job onyx.sim.examples.hello/job
+       :transitions [{:event :onyx.sim.api/init}
+                     {:event :onyx.sim.api/inputs
+                      :inputs {:in onyx.sim.examples.hello/input-segments}}])
+;;      (make-sim2
+;;        :name :flow-short-circuit
+;;        :job onyx.sim.examples.flow-short-circuit/job
+;;        :title "Flow Short Circuit"
+;;        :description (:onyx/doc onyx.sim.examples.flow-short-circuit/job)
+;;        :inputs {:in onyx.sim.examples.flow-short-circuit/input-segments})
+     {:onyx/name :onyx.sim/settings
+      :onyx.sim/selected-view :onyx.sim/sim-view
+      :onyx.sim/selected-sim [:onyx/name ::hello-sim]}]))
+
 (defn selected-sim [conn]
   (let [{{:keys [db/id]} :onyx.sim/selected-sim} @(posh/pull conn '[:onyx.sim/selected-sim] [:onyx/name :onyx.sim/settings])]
     id))
@@ -523,10 +541,10 @@
                                         :onyx.sim/task-name task-name})]]]
       [render inbox]]]))
 
-(defn code-render [seqq]
+(defn code-render [code]
   [flui/code
    :code
-   (mapv printable-seg seqq)])
+   code])
 
 (defn pretty-task-box [conn {:as seg :keys [onyx.sim/sim onyx.sim/task-name]}]
   (let [env @(pull-env conn sim)
@@ -567,7 +585,7 @@
        ]]))
 
 (defn pretty-env [conn {:as seg :keys [onyx.sim/sim]}]
-  (let [{:keys [sorted-tasks]} @(pull-env conn sim)
+  (let [{:as env :keys [sorted-tasks]} @(pull-env conn sim)
         {:keys [onyx.sim/hidden-tasks]} @(posh/pull conn '[:onyx.sim/hidden-tasks] sim)]
     [flui/v-box
       :class "onyx-env"
@@ -768,8 +786,7 @@
     (fn [conn]
       [flui/code
        :code @the-whole-conn
-       :pr-fn pr-str
-       ])))
+       :pr-fn pr-str])))
 
 (defn settings [conn]
   [flui/v-box
@@ -812,14 +829,17 @@
      :child
      [display-selected conn view]]))
 
-(defn sim-debug [{:as sys :keys [dat.sync.db/conn]} {:as seg :keys [onyx.sim/sim onyx.sim/error onyx.sim/inputs]}]
+(defn sim-debug [{:as sys :keys [dat.sync.db/conn]}
+                 {:as seg :keys [onyx.sim/sim
+                                 onyx.sim/error
+                                 onyx.sim/inputs]}]
   [flui/v-box
    :children
    [[flui/p (str "BROKEN!!! by " error)]
     [flui/p (str "Inputs" (into
                             {}
                             (map (fn [[task-name segments]]
-                                   [task-name (mapv printable-seg segments)]))
+                                   [task-name segments]))
                             inputs))]
     [sim-view conn seg]]])
 
@@ -834,6 +854,8 @@
      :gap "1ch"
      :children
      [[control/active-logo conn :onyx.sim/logo]
-      [control/nav-bar conn :onyx.sim/nav]]]
+      [control/nav-bar conn :onyx.sim/nav]
+      ]]
     [flui/gap :size ".25rem"]
-    [content-view conn]]])
+    [content-view conn]
+    ]])

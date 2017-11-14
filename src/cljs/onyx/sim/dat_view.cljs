@@ -110,7 +110,7 @@
 ;;;
 (defn render-segment [;;{:as sys :keys [dat.sync.db/conn]}
                       {:as seg :keys [onyx.sim/sim dat.sync.db/conn]}]
-  (log/info "rendering seg" (sim/printable-seg seg))
+  (log/info "rendering seg" seg)
   (let [env (sim/pull-env conn sim)]
     ;; !!!: (log/info "clean" (onyx/env-summary env))
     (try
@@ -153,7 +153,7 @@
 ;;                       sys
                       child])
                    segments)]
-    (log/info "dat-view-box" (map sim/printable-seg segments))
+    (log/info "dat-view-box" segments)
     [flui/v-box
      :children
      [[flui/button
