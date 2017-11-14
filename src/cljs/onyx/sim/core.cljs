@@ -15,7 +15,7 @@
             [reagent.ratom :as ratom]
             [reagent.core :as r :refer [atom]]))
 
-;; NOTE: task fns must be defined before job is onyx/init or race conditions occur
+;; TODO: import uris should be a drop-down
 
 ;;
 ;; UTILS
@@ -34,16 +34,6 @@
   {:function sim-pale-blue
    :input onyx-gray
    :output onyx-green})
-
-(defn pull-env-deprecated [conn sim-id]
-  (ratom/make-reaction
-    (fn []
-      (let [db @conn]
-;;         (log/info "pull-env-reaction" (meta db))
-      (-> db
-          meta
-          :onyx.sim.api/transition
-          (get (:db/id (d/entity db sim-id))))))))
 
 (defn pull-env [conn sim-id]
   (event/listen-env @conn sim-id))
@@ -604,16 +594,6 @@
 
 (defn ^:export hidden-tasks [conn]
   (:onyx.sim/hidden-tasks @(posh/pull conn '[:onyx.sim/hidden-tasks] (selected-sim conn))))
-
-;; (defn ^:export hide-tasks [conn]
-;;   #(event/dispatch conn {:onyx/type :onyx.sim.event/hide-tasks
-;;                          :onyx.sim/sim (selected-sim conn)
-;;                          :onyx.sim/task-names %}))
-
-;; (defn ^:export select-view [conn]
-;;   #(event/dispatch conn {:onyx/type :onyx.sim/select-view
-;;                          :onyx.sim/sim (selected-sim conn)
-;;                          :selected %}))
 
 (defn ^:export view-choices [conn]
   (let [sims @(posh/q '[:find ?title ?sim

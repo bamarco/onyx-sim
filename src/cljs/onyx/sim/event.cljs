@@ -82,11 +82,11 @@
             [:db/add sim :onyx.sim/transitions (into transitions animation-transitions)]))))))
 
 (defmethod intent ::stop-animate-sims [db _ _]
-  ;; TODO: stop all running sims
+  ;; TODO: stop all :onyx.sim/running?
     [[:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/animating? false]])
 
 (defn sim! [conn]
-  ;; ???: env snapshotting of transactions?
+  ;; ???: env snapshotting of transitions?
   ;; ???: support undo transitions?
   (swap!
     conn
@@ -102,6 +102,7 @@
     (fn [{:as report :keys [db-before db-after]}]
       (let [env-atom (dispense db-after)
             sim->tss (d/q transitions-query db-after)]
+        ;; TODO: do-seq each sim rather than swap! them all at once
 ;;         (log/info "sim->tss" sim->tss)
         (swap!
           env-atom
