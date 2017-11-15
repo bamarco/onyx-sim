@@ -17,6 +17,7 @@
 
 ;; TODO: import uris should be a drop-down
 ;; TODO: index.html -> hiccup (prevents resources conflict with downstream projects)
+;; ???: Should there be some kind of asynchronous job runner that caches compiled jobs? If so how do we get async to interface with react?
 
 ;;
 ;; UTILS
