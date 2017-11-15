@@ -28,7 +28,7 @@
 
 (defn ^:export with-context
   [{:as event :keys [dat.view/alias]} seg]
-  (map-alias alias seg))
+  (into (or event {}) (map-alias alias seg)))
 
 (defn parse-find-vars [q-expr]
   ;; TODO: implement. for now a hardcoded value for testing
@@ -73,11 +73,12 @@
      [:db/add id attr new-v]]))
 
 (defn ^:export intent [{:as seg :keys [dat.sync.db/snapshot dat.view/handler]}]
+  (log/info "intenting" handler seg)
   {:dat.sync.db/txs
    (case handler
      ::simple-toggle (simple-toggle snapshot seg)
      ::simple-value (simple-value snapshot seg)
-     (throw (ex-info "Unknown intent" seg)))})
+     (throw (ex-info "Unknown intent" {:segment seg})))})
 
 ;;;
 ;;; Lifecycle
@@ -117,19 +118,19 @@
          {:onyx.sim/inputs {:dat.view/render [seg]}
           :onyx.sim/error e}]))))
 
-(defn render-segments->debug-sim [db parent-sim-id segs child-name]
-  ;; TODO: update to use make-sim so all the init is done properly.
-  (let [parent-sim (d/entity db parent-sim-id)]
-    (log/info "parent job" (:onyx.core/job parent-sim))
-    nil
-;;   [(into
-;;      sim/default-sim
-;;      {:onyx.sim/title child-name
-;;       :onyx/type :onyx.sim/sim
-;;       :onyx.core/job (get-in parent-sim [:onyx.core/job :db/id])
-;;       :onyx.sim/env (reduce #(onyx/new-segment %1 :dat.view/render %2) (:onyx.sim/clean-env parent-sim) segs)
-;;       :onyx.sim/clean-env (:onyx.sim/clean-env parent-sim)})]
-    ))
+;; (defn render-segments->debug-sim [db parent-sim-id segs child-name]
+;;   ;; TODO: update to use make-sim so all the init is done properly.
+;;   (let [parent-sim (d/entity db parent-sim-id)]
+;;     (log/info "parent job" (:onyx.core/job parent-sim))
+;;     nil
+;; ;;   [(into
+;; ;;      sim/default-sim
+;; ;;      {:onyx.sim/title child-name
+;; ;;       :onyx/type :onyx.sim/sim
+;; ;;       :onyx.core/job (get-in parent-sim [:onyx.core/job :db/id])
+;; ;;       :onyx.sim/env (reduce #(onyx/new-segment %1 :dat.view/render %2) (:onyx.sim/clean-env parent-sim) segs)
+;; ;;       :onyx.sim/clean-env (:onyx.sim/clean-env parent-sim)})]
+;;     ))
 
 (defn box* [{:as sys :keys [dat.sync.db/conn onyx.sim/sim]}
             {:as seg :keys [dat.view/direction
@@ -187,6 +188,7 @@
 (defn ^:export text-input [sys
                            {:as seg :keys [dat.view/label
                                            dat.view/event]}]
+  (log/info "text-input" label (:onyx.sim/sim sys) event)
   (assoc
     seg
     :dat.view/component
@@ -216,10 +218,9 @@
     @(posh/pull conn '[*] (or id [:dat.view/route route]))))
 
 (defn ^:export pull [{:as sys :keys [dat.sync.db/conn]}
-                     {:as seg :keys [;;dat.sync.db/conn
-                                      dat.view/pull-expr
-                                      dat.view/entity
-                                      dat.view/alias]}]
+                     {:as seg :keys [dat.view/pull-expr
+                                     dat.view/entity
+                                     dat.view/alias]}]
   (log/info "pull")
   (log/info pull-expr entity)
   (map-alias
@@ -257,27 +258,34 @@
   ([] (catalog 20))
   ([onyx-batch-size]
    [{:onyx/name :dat.view/render
+     :onyx/doc "Segments to be rendered and eventually mounted"
      :onyx/type :input
      :onyx/batch-size onyx-batch-size}
     {:onyx/name :dat.view/dispatch
+     :onyx/doc "Segments that are events to be dispatched and eventually transacted"
      :onyx/type :input
      :onyx/batch-size onyx-batch-size}
 
     {:onyx/name :dat.view.event/intent
+     :onyx/doc "Matches events to handlers."
      :onyx/type :function
      :onyx/fn ::intent
      :onyx/batch-size onyx-batch-size}
 
     {:onyx/name :dat.view.subscribe/route
-     :onyx/doc "This pulls * the :dat.view/route and merges into the segment."
+     ;; TODO: can we get the doc from the funtion itself???
+     ;; ???: markdown
+     :onyx/doc "This posh/pulls '[*] the :dat.view/route and merges into the segment"
      :onyx/type :function
      :onyx/fn ::route
      :onyx/batch-size onyx-batch-size}
     {:onyx/name :dat.view.subscribe/pull
+     :onyx/doc "If this segment has a :dat.view/pull-expr, then posh/pull"
      :onyx/type :function
      :onyx/fn ::pull
      :onyx/batch-size onyx-batch-size}
     {:onyx/name :dat.view.subscribe/query
+     :onyx/doc "If this segment has a :dat.view/query-expr, then posh/q"
      :onyx/type :function
      :onyx/fn ::query
      :onyx/batch-size onyx-batch-size}
