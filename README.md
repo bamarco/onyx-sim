@@ -2,9 +2,11 @@
 
 ## What's this now
 
+Try it out here: https://onyx-sim.herokuapp.com/
+
 onyx simimulator is an interactive implementation of the [onyx local runtime](https://github.com/onyx-platform/onyx-local-rt). It will soon be a core component of the [datsys](https://github.com/metasoarous/datsys) project. Right now the codebase includes a bunch of experiments for future [datview](https://github.com/metasoarous/datview).
 
-No maven deployment yet so git clone it if you want to try it out. Definitely still in alpha phase.
+No maven deployment yet so git clone if you want to use it. It's in alpha, but moving to beta soon.
 
 
 ## Development
