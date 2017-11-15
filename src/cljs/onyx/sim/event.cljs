@@ -54,6 +54,11 @@
     (dispense conn)
     [(:db/id (d/entity @conn sim)) :env]))
 
+(defn listen-clean-env [conn sim]
+  (ratom/cursor
+    (dispense conn)
+    [(:db/id (d/entity @conn sim)) :clean-env]))
+
 (defn sim-or-selected [db sim]
   (or (d/entity db sim)
       (-> db
@@ -83,7 +88,7 @@
             (fn [envs]
               (reduce
                 (fn [envs [sim tss-after]]
-                  (let [{:keys [env transitions]} (get envs sim)]
+                  (let [{:keys [env transitions clean-env]} (get envs sim)]
                     (if (= transitions tss-after)
                       envs
                       (let [new-tss (transitions-diff transitions tss-after)]
@@ -92,7 +97,8 @@
                           envs
                           sim
                           {:env (reduce onyx/transition-env env new-tss)
-                           :transitions tss-after})))))
+                           :transitions tss-after
+                           :clean-env (or clean-env (onyx/transition-env nil (first tss-after)))})))))
                 envs
                 sim->tss))))))
     (d/listen!

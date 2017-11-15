@@ -34,25 +34,25 @@
   ;; TODO: implement. for now a hardcoded value for testing
   '[:?todo])
 
-(defn process-event [db {:as seg :keys [onyx.sim/sim]}]
-  (let [env (:onyx.sim/clean-env (d/entity db sim))]
-;;     (log/info "processing" sim (onyx/env-summary env))
+(defn process-event [db env {:as seg :keys [onyx.sim/sim]}]
     (-> (onyx/new-segment env :dat.view/dispatch (assoc seg :dat.sync.db/snapshot db))
         onyx/drain
         :tasks
         :dat.sync/transact
         :outputs
         first
-        :dat.sync.db/txs)))
+        :dat.sync.db/txs))
 
-(defn dispatch! [{:as seg :keys [dat.sync.db/conn]} & inputs]
+(defn dispatch! [{:as sys :keys [dat.sync.db/conn onyx.sim/sim]} seg & inputs]
+  ;; ???: what happens when you listen to a ratom inside a dispatch method?
+  ;; ???: make dispatch! a lifecycle item.
   (d/transact!
     conn
     [[:db.fn/call
       process-event
+      @(event/listen-clean-env conn sim)
       (assoc seg
-        :dat.view/inputs inputs
-        :dat.sync.db/conn nil)]]))
+        :dat.view/inputs inputs)]]))
 
 ;;;
 ;;; Event
@@ -82,17 +82,6 @@
 ;;;
 ;;; Lifecycle
 ;;;
-;; (def conn-context
-;;   (sim/system-contexter
-;;    {:dat.sync.db/conn [:knowbase :conn]}))
-
-;; (def dispatch-context
-;;   (sim/system-contexter
-;;     {:dat.view/dispatch! [:knowbase :dispatch!]}))
-
-;; (def ^:export dat-view-lifecycle
-;;   {:lifecycle/before-task-start (sim/context-injecter conn-context dispatch-context)})
-
 (defn inject-meta [event lifecycle]
   {:onyx.core/params
    (conj (:onyx.core/params event) (meta lifecycle))})
@@ -111,8 +100,7 @@
 (defn render-segment [{:as sys :keys [dat.sync.db/conn onyx.sim/sim]}
                       {:as seg}]
   (log/info "rendering seg" seg)
-  (let [env (sim/pull-env conn sim)]
-    ;; ***TODO: either env needs to be a clean env or need the ability to identify segments as they run through the env.
+  (let [env @(event/listen-clean-env conn sim)]
     ;; !!!: (log/info "clean" (onyx/env-summary env))
     (try
       (->
@@ -181,7 +169,8 @@
     :dat.view/component
     [flui/label :label label]))
 
-(defn ^:export checkbox [{:as seg :keys [dat.view/label
+(defn ^:export checkbox [sys
+                         {:as seg :keys [dat.view/label
                                          dat.view/toggled?
                                          dat.view/event]}]
   (let [default-event {:dat.view/handler ::simple-toggle
@@ -193,16 +182,17 @@
       [flui/checkbox
        :model toggled?
        :label label
-       :on-change #(dispatch! (into default-event (with-context event seg)))])))
+       :on-change #(dispatch! sys (into default-event (with-context event seg)))])))
 
-(defn ^:export text-input [{:as seg :keys [dat.view/label
+(defn ^:export text-input [sys
+                           {:as seg :keys [dat.view/label
                                            dat.view/event]}]
   (assoc
     seg
     :dat.view/component
     [flui/input-text
      :model label
-     :on-change (partial dispatch! (with-context event seg))]))
+     :on-change (partial dispatch! sys (with-context event seg))]))
 
 (defn ^:export default [seg]
   (assoc
@@ -333,6 +323,10 @@
     {:lifecycle/task :dat.view.subscribe/query
      :lifecycle/calls ::meta-lifecycle}
     {:lifecycle/task :dat.view.represent/box
+     :lifecycle/calls ::meta-lifecycle}
+    {:lifecycle/task :dat.view.represent/checkbox
+     :lifecycle/calls ::meta-lifecycle}
+    {:lifecycle/task :dat.view.represent/text-input
      :lifecycle/calls ::meta-lifecycle}]
 
    :onyx.core/workflow
