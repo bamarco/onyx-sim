@@ -136,11 +136,6 @@
   (for [input inputs]
     [:db/add entity attr input]))
 
-;; (defn ^:export toggle-select2 [db {:as seg :keys [dat.view/entity dat.view/attr dat.view/inputs]}]
-;;   [[:db/retract entity attr (get (d/entity db entity) attr)]
-;;    [:db/add entity attr #{(first inputs)}]])
-
-
 (defn ^:export simple-value [db {:as seg :keys [dat.view/entity dat.view/attr dat.view/inputs]}]
   [[:db/retract entity attr (get (d/entity db entity) attr)]
    [:db/add entity attr (first inputs)]])
@@ -151,18 +146,7 @@
     [[:db/retract entity attr old-value]
      [:db/add entity attr (not old-value)]]))
 
-;; (defn ^:export single-as-set [{:as seg :keys [dat.view/inputs]}]
-;;   (update-in
-;;     seg
-;;     [:dat.view/inputs]
-;;     (fn [[selection]]
-
-;;     ))
-
-
 ;;
-;; dat.view/label or dat.view/label-fn and dat.view/choice
-;; dat.view/choice-id or dat.view/id-fn and dat.view/choice
 ;;
 (defn ^:export radio-choice2
   [{:keys [dat.view/dispatch! dat.view/conn]}
@@ -211,29 +195,6 @@
        (let [control (assoc control :dat.view/option option)
              component [radio-choice2 system control]]
          (assoc control :dat.view/component component))))])
-
-;; (defn create-dispatcher [conn]
-;;   (fn [{:as event :keys [dat.view/handler]} & inputs]
-;;     (d/transact!
-;;       conn
-;;       [[:db.fn/call
-;;         (onyx/kw->fn handler)
-;;         (assoc
-;;           event
-;;           :dat.view/inputs inputs)]])))
-
-;; (defn radio-choicer [conn control-name index]
-;;   (let [{:keys [control/chosen control/choices]} (pull-control conn control-name)]
-;;     [radio-choice2
-;;      {:dat.view/conn conn
-;;       :dat.view/dispatch!
-;;       (create-dispatcher conn)}
-;;      {:dat.view/label-fn :label
-;;       :dat.view/id-fn :id
-;;       :dat.view/option (get choices index)
-;;       :dat.view/selected chosen
-;;       :dat.view/entity [:control/name control-name]
-;;       :dat.view/attr :control/toggled?}]))
 
 (defn radio-choice [conn control-name index]
   (let [{:keys [control/label-fn control/id-fn control/chosen control/choices control/choose]} (pull-control conn control-name)

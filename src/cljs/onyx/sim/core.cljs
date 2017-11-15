@@ -36,7 +36,7 @@
    :output onyx-green})
 
 (defn pull-env [conn sim-id]
-  (event/listen-env @conn sim-id))
+  (event/listen-env conn sim-id))
 
 (def default-sim
   {:onyx/type :onyx.sim/sim
@@ -348,7 +348,7 @@
 
 (defn context-injecter [& fns]
   (fn [event lifecycle]
-    (log/info "lifecycle meta:" (meta lifecycle))
+;;     (log/info "lifecycle meta:" (meta lifecycle))
     {:onyx.core/params
      [(with-meta
         (transduce
@@ -514,7 +514,6 @@
 (defn pretty-env [conn {:as seg :keys [onyx.sim/sim]}]
   (let [{:as env :keys [sorted-tasks]} @(pull-env conn sim)
         {:keys [onyx.sim/hidden-tasks]} @(posh/pull conn '[:onyx.sim/hidden-tasks] sim)]
-    (log/info "!!!env" sim env)
     [flui/v-box
       :class "onyx-env"
       :children

@@ -10,6 +10,7 @@
                  [org.clojure/core.async "0.3.442"]
                  [clojure-future-spec "1.9.0-alpha17"]
                  [org.clojure/math.numeric-tower "0.0.4"]
+                 [datascript "0.16.2"]
                  [re-com "0.9.0"]
                  [com.cognitect/transit-clj "0.8.300"]
                  [cljs-http "0.1.42"]

@@ -15,16 +15,13 @@
                      ;; (log/debug seg "Intenting" intention)
                      intention)))
 
-(def tx-middleware datascript.db/keep-meta-middleware)
-
 (defn dispatch! [conn {:as event} & inputs]
   (d/transact!
     conn
     [[:db.fn/call
       intent
       event
-      inputs]]
-    {:datascript.db/tx-middleware tx-middleware}))
+      inputs]]))
 
 (defn raw-dispatch! [conn {:as event} & inputs]
   (intent conn event inputs))
@@ -45,13 +42,25 @@
                :transitions-after transitions-after}))
     new-tss))
 
-(defn dispense [db]
-  (::env-atom (meta db)))
+(defn dispense-deprecated [db]
+  (::dispenser (meta db)))
 
-(defn listen-env [db sim]
+(defn dispense [conn]
+  (let [listeners (into {} (-> (meta conn)
+                               :listeners
+                               deref))
+        env-atom ((::dispenser listeners) ::request-env-atom)]
+    env-atom))
+
+(defn listen-env-deprecated [db sim]
   (ratom/cursor
     (dispense db)
     [(:db/id (d/entity db sim)) :env]))
+
+(defn listen-env [conn sim]
+  (ratom/cursor
+    (dispense conn)
+    [(:db/id (d/entity @conn sim)) :env]))
 
 (defn sim-or-selected [db sim]
   (or (d/entity db sim)
@@ -88,60 +97,55 @@
 (defn sim! [conn]
   ;; ???: env snapshotting of transitions?
   ;; ???: support undo transitions?
-  (swap!
-    conn
-    vary-meta
-    (fn [m]
-      (assoc
-        (or m {})
-        ::env-atom
-        (r/atom {}))))
-  (d/listen!
-    conn
-    ::envs
-    (fn [{:as report :keys [db-before db-after]}]
-      (let [env-atom (dispense db-after)
-            sim->tss (d/q transitions-query db-after)]
-        ;; TODO: do-seq each sim rather than swap! them all at once
-;;         (log/info "sim->tss" sim->tss)
-        (swap!
-          env-atom
-          (fn [envs]
-            (reduce
-              (fn [envs [sim tss-after]]
-                (let [{:keys [env transitions]} (get envs sim)]
-                  (if (= transitions tss-after)
-                    envs
-                    (let [new-tss (transitions-diff transitions tss-after)]
-                      (log/info "tss-after" tss-after)
-                      (assoc
-                        envs
-                        sim
-                        {:env (reduce onyx/transition-env env new-tss)
-                         :transitions tss-after})))))
-              envs
-              sim->tss))))))
-  (d/listen!
-    conn
-    ::animating
-    (fn [{:as report :keys [db-before db-after]}]
-      (let [settings-before (d/entity db-before [:onyx/name :onyx.sim/settings])
-            settings-after  (d/entity db-after [:onyx/name :onyx.sim/settings])
-            animating? (:onyx.sim/animating? settings-after)
-            was-animating? (:onyx.sim/animating? settings-before)
-            touched? (not= (:onyx.sim/touch settings-before) (:onyx.sim/touch settings-after))
-            start-animating? (and (not was-animating?) animating?)]
-        (when (or start-animating? (and animating? touched?))
-          ;; TODO: schedule a callback when frames-between-animation is large instead of using r/next-tick
-          (r/next-tick #(dispatch! conn {:dat.view/handler ::animate-sims})))))))
+  (let [env-atom (r/atom {})]
+    (d/listen!
+      conn
+      ::dispenser
+      (fn [dispense-request]
+        (when (keyword? dispense-request)
+          env-atom)))
+    (d/listen!
+      conn
+      ::envs
+      (fn [{:as report :keys [db-before db-after]}]
+        (let [;;env-atom (dispense db-after)
+              sim->tss (d/q transitions-query db-after)]
+          ;; TODO: do-seq each sim rather than swap! them all at once
+          ;;         (log/info "sim->tss" sim->tss)
+          (swap!
+            env-atom
+            (fn [envs]
+              (reduce
+                (fn [envs [sim tss-after]]
+                  (let [{:keys [env transitions]} (get envs sim)]
+                    (if (= transitions tss-after)
+                      envs
+                      (let [new-tss (transitions-diff transitions tss-after)]
+;;                         (log/info "tss-after" tss-after)
+                        (assoc
+                          envs
+                          sim
+                          {:env (reduce onyx/transition-env env new-tss)
+                           :transitions tss-after})))))
+                envs
+                sim->tss))))))
+    (d/listen!
+      conn
+      ::animating
+      (fn [{:as report :keys [db-before db-after]}]
+        (let [settings-before (d/entity db-before [:onyx/name :onyx.sim/settings])
+              settings-after  (d/entity db-after [:onyx/name :onyx.sim/settings])
+              animating? (:onyx.sim/animating? settings-after)
+              was-animating? (:onyx.sim/animating? settings-before)
+              touched? (not= (:onyx.sim/touch settings-before) (:onyx.sim/touch settings-after))
+              start-animating? (and (not was-animating?) animating?)]
+          (when (or start-animating? (and animating? touched?))
+            ;; TODO: schedule a callback when frames-between-animation is large instead of using r/next-tick
+            (r/next-tick #(dispatch! conn {:dat.view/handler ::animate-sims}))))))))
 
 (defn unsim! [conn]
   (dispatch! conn {:dat.view/handler ::stop-animate-sims})
-  (swap!
-    conn
-    vary-meta
-    dissoc
-    ::env-atom)
+  (d/unlisten! conn ::dispenser)
   (d/unlisten! conn ::envs)
   (d/unlisten! conn ::animating))
 
