@@ -42,20 +42,12 @@
                :transitions-after transitions-after}))
     new-tss))
 
-(defn dispense-deprecated [db]
-  (::dispenser (meta db)))
-
 (defn dispense [conn]
   (let [listeners (into {} (-> (meta conn)
                                :listeners
                                deref))
         env-atom ((::dispenser listeners) ::request-env-atom)]
     env-atom))
-
-(defn listen-env-deprecated [db sim]
-  (ratom/cursor
-    (dispense db)
-    [(:db/id (d/entity db sim)) :env]))
 
 (defn listen-env [conn sim]
   (ratom/cursor
@@ -67,32 +59,6 @@
       (-> db
           (d/entity [:onyx/name :onyx.sim/settings])
           :onyx.sim/selected-sim)))
-
-(defmethod intent ::animate-sims
-  [db _ _]
-  (let [{:keys [db/id
-                onyx.sim/animation-transitions
-                onyx.sim/frames-between-animation
-                onyx.sim/frames-since-last-animation
-                onyx.sim/touch]}
-        (d/pull db [:db/id
-                    :onyx.sim/animation-transitions
-                    :onyx.sim/frames-between-animation
-                    :onyx.sim/frames-since-last-animation
-                    :onyx.sim/touch] [:onyx/name :onyx.sim/settings])
-        animate? (= (or frames-since-last-animation 0) (or frames-between-animation 0))]
-    (into
-      [[:db/add id :onyx.sim/touch (not touch)]]
-      (if-not animate?
-        [[:db/add id :onyx.sim/frames-since-last-animation (inc frames-since-last-animation)]]
-        (into
-          [[:db/add id :onyx.sim/frames-since-last-animation 0]]
-          (for [[sim transitions] (d/q transitions-query db)]
-            [:db/add sim :onyx.sim/transitions (into transitions animation-transitions)]))))))
-
-(defmethod intent ::stop-animate-sims [db _ _]
-  ;; TODO: stop all :onyx.sim/running?
-    [[:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/animating? false]])
 
 (defn sim! [conn]
   ;; ???: env snapshotting of transitions?
@@ -148,6 +114,32 @@
   (d/unlisten! conn ::dispenser)
   (d/unlisten! conn ::envs)
   (d/unlisten! conn ::animating))
+
+(defmethod intent ::animate-sims
+  [db _ _]
+  (let [{:keys [db/id
+                onyx.sim/animation-transitions
+                onyx.sim/frames-between-animation
+                onyx.sim/frames-since-last-animation
+                onyx.sim/touch]}
+        (d/pull db [:db/id
+                    :onyx.sim/animation-transitions
+                    :onyx.sim/frames-between-animation
+                    :onyx.sim/frames-since-last-animation
+                    :onyx.sim/touch] [:onyx/name :onyx.sim/settings])
+        animate? (= (or frames-since-last-animation 0) (or frames-between-animation 0))]
+    (into
+      [[:db/add id :onyx.sim/touch (not touch)]]
+      (if-not animate?
+        [[:db/add id :onyx.sim/frames-since-last-animation (inc frames-since-last-animation)]]
+        (into
+          [[:db/add id :onyx.sim/frames-since-last-animation 0]]
+          (for [[sim transitions] (d/q transitions-query db)]
+            [:db/add sim :onyx.sim/transitions (into transitions animation-transitions)]))))))
+
+(defmethod intent ::stop-animate-sims [db _ _]
+  ;; TODO: stop all :onyx.sim/running?
+    [[:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/animating? false]])
 
 (defn ^:export simple-toggle [db {:keys [dat.view/entity dat.view/attr]}]
   (let [old-value (attr (d/entity db entity))
@@ -237,7 +229,7 @@
 (defmethod intent
   ::import-segments
   [conn {:keys [onyx.sim/sim onyx.sim/task-name]} _]
-  (let [uri (first (:onyx.sim/import-uris (d/entity @conn sim)))]
+  (let [uri (or (:onyx.sim/import-uri (d/entity @conn sim)) (first (:onyx.sim/import-uris (d/entity @conn sim))))]
     (go
       (let [response (<! (http/get uri))]
         (log/info (str "retrieving edn from <" uri ">"))

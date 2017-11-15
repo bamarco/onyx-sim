@@ -16,6 +16,7 @@
             [reagent.core :as r :refer [atom]]))
 
 ;; TODO: import uris should be a drop-down
+;; TODO: index.html -> hiccup (prevents resources conflict with downstream projects)
 
 ;;
 ;; UTILS
@@ -346,17 +347,17 @@
 ;;              [resource (get-in task-map location)]))
 ;;       task-locations)))
 
-(defn context-injecter [& fns]
-  (fn [event lifecycle]
-;;     (log/info "lifecycle meta:" (meta lifecycle))
-    {:onyx.core/params
-     [(with-meta
-        (transduce
-          (map #(% event lifecycle))
-          merge
-          {}
-          fns)
-        (meta lifecycle))]}))
+;; (defn context-injecter [& fns]
+;;   (fn [event lifecycle]
+;; ;;     (log/info "lifecycle meta:" (meta lifecycle))
+;;     {:onyx.core/params
+;;      [(with-meta
+;;         (transduce
+;;           (map #(% event lifecycle))
+;;           merge
+;;           {}
+;;           fns)
+;;         (meta lifecycle))]}))
 
 ;;;
 ;;; Predicates
@@ -456,7 +457,6 @@
                       {:dat.view/handler :onyx.sim.event/simple-value
                        :dat.view/entity sim
                        :dat.view/attr :onyx.sim/import-uri})
-         ;; ***FIXME: import-uris needs to be a selector
          ]
         [flui/button
          :label "Import Segments"
@@ -737,9 +737,8 @@
      :child
      [display-selected conn view]]))
 
-(defn sim-debug [{:as sys :keys [dat.sync.db/conn]}
-                 {:as seg :keys [onyx.sim/sim
-                                 onyx.sim/error
+(defn sim-debug [{:as sys :keys [dat.sync.db/conn onyx.sim/sim]}
+                 {:as seg :keys [onyx.sim/error
                                  onyx.sim/inputs]}]
   [flui/v-box
    :children
