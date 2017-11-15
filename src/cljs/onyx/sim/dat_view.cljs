@@ -12,7 +12,7 @@
 ;;; Predicates
 ;;;
 (defn ^:export represent? [event old-seg seg all-new represent]
-  (log/info "represent?" represent (= (:dat.view/represent seg) represent))
+;;   (log/info "represent?" represent (= (:dat.view/represent seg) represent))
   (= (:dat.view/represent seg) represent))
 
 ;;;
@@ -60,7 +60,7 @@
 (defn ^:export simple-toggle [db {:keys [dat.view/entity dat.view/attr dat.view/inputs]}]
   (let [{:as e :keys [db/id]} (d/entity db entity)
         v (get e attr)]
-    (log/info "toggle" [id attr] "from" v "to" (not v))
+;;     (log/info "toggle" [id attr] "from" v "to" (not v))
     [[:db/retract id attr v]
      [:db/add id attr (not v)]]))
 
@@ -68,12 +68,12 @@
   (let [{:as e :keys [db/id]} (d/entity db entity)
         old-v (get e attr)
         new-v (first inputs)]
-    (log/info "change" [id attr] "from" old-v "to" new-v)
+;;     (log/info "change" [id attr] "from" old-v "to" new-v)
     [[:db/retract id attr old-v]
      [:db/add id attr new-v]]))
 
 (defn ^:export intent [{:as seg :keys [dat.sync.db/snapshot dat.view/handler]}]
-  (log/info "intenting" handler seg)
+;;   (log/info "intenting" handler seg)
   {:dat.sync.db/txs
    (case handler
      ::simple-toggle (simple-toggle snapshot seg)
@@ -100,7 +100,7 @@
 ;;;
 (defn render-segment [{:as sys :keys [dat.sync.db/conn onyx.sim/sim]}
                       {:as seg}]
-  (log/info "rendering seg" seg)
+;;   (log/info "rendering seg" seg)
   (let [env @(event/subscribe-clean-env conn sim)]
     ;; !!!: (log/info "clean" (onyx/env-summary env))
     (try
@@ -142,7 +142,7 @@
                       sys
                       child])
                    layout)]
-    (log/info "dat-view-box")
+;;     (log/info "dat-view-box")
     [flui/v-box
      :children
      [
@@ -188,7 +188,7 @@
 (defn ^:export text-input [sys
                            {:as seg :keys [dat.view/label
                                            dat.view/event]}]
-  (log/info "text-input" label (:onyx.sim/sim sys) event)
+;;   (log/info "text-input" label (:onyx.sim/sim sys) event)
   (assoc
     seg
     :dat.view/component
@@ -211,8 +211,8 @@
 (defn ^:export route [{:as sys :keys [dat.sync.db/conn]}
                       {:as seg :keys [dat.view/route
                                       db/id]}]
-  (log/info "Routing (or " id route )
-  (log/info "  conn" conn)
+;;   (log/info "Routing (or " id route )
+;;   (log/info "  conn" conn)
   (into
     seg
     @(posh/pull conn '[*] (or id [:dat.view/route route]))))
@@ -221,8 +221,8 @@
                      {:as seg :keys [dat.view/pull-expr
                                      dat.view/entity
                                      dat.view/alias]}]
-  (log/info "pull")
-  (log/info pull-expr entity)
+;;   (log/info "pull")
+;;   (log/info pull-expr entity)
   (map-alias
     alias
     (into
@@ -235,7 +235,7 @@
                                       dat.view/inputs
                                       dat.view/layout-alias
                                       dat.view/layout-value]}]
-  (log/info "dat-view-query")
+;;   (log/info "dat-view-query")
   (let [find-vars (parse-find-vars q-expr)
         relation (when q-expr
                    @(apply posh/q q-expr conn inputs))]

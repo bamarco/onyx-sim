@@ -160,7 +160,7 @@
 
 (defn ^:export simple-value [db {:keys [dat.view/entity dat.view/attr dat.view/value]}]
   (let [old-value (attr (d/entity db entity))]
-    (log/info "set eav" [entity attr value])
+;;     (log/info "set eav" [entity attr value])
     [(when old-value [:db/retract entity attr old-value])
      [:db/add entity attr value]]))
 
@@ -202,7 +202,7 @@
         animating? (:onyx.sim/animating? (d/entity db [:onyx/name :onyx.sim/settings]))
         last-to-stop? was-running?
         first-to-start? is-running?]
-    (log/info "toggle-event" {:first first-to-start? :last last-to-stop?})
+;;     (log/info "toggle-event" {:first first-to-start? :last last-to-stop?})
     (cat-into
       [[:db/retract sim-id :onyx.sim/running? was-running?]
        [:db/add sim-id :onyx.sim/running? is-running?]]

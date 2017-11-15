@@ -363,11 +363,11 @@
 ;;; Predicates
 ;;;
 (defn ^:export match-any-attr? [event old-seg seg all-new attrs]
-  (log/info "match-attrs" (contains? attrs (last (:dat.view/path seg))))
+;;   (log/info "match-attrs" (contains? attrs (last (:dat.view/path seg))))
   (contains? attrs (last (:dat.view/path seg))))
 
 (defn ^:export always [event old-seg seg all-new]
-  (log/info "ALWAYS")
+;;   (log/info "ALWAYS")
   true)
 
 (defn ^:export match-any-spec? [event old-seg seg all-new specs]
