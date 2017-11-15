@@ -37,7 +37,7 @@
    :output onyx-green})
 
 (defn pull-env [conn sim-id]
-  (event/listen-env conn sim-id))
+  (event/subscribe-env conn sim-id))
 
 (def default-sim
   {:onyx/type :onyx.sim/sim
@@ -502,7 +502,7 @@
                {:dat.view/handler :onyx.sim.event/hide-task
                 :onyx.sim/sim sim
                 :onyx.sim/task-name task-name})]
-          (when task-doc [flui/p task-doc])])
+          (when task-doc [flui/label :style {:color :white} :label task-doc])])
        [pretty-inbox conn
         (assoc seg
          :onyx.sim/render render-fn)]

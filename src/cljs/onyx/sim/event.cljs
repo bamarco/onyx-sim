@@ -49,12 +49,12 @@
         env-atom ((::dispenser listeners) ::request-env-atom)]
     env-atom))
 
-(defn listen-env [conn sim]
+(defn subscribe-env [conn sim]
   (ratom/cursor
     (dispense conn)
     [(:db/id (d/entity @conn sim)) :env]))
 
-(defn listen-clean-env [conn sim]
+(defn subscribe-clean-env [conn sim]
   (ratom/cursor
     (dispense conn)
     [(:db/id (d/entity @conn sim)) :clean-env]))

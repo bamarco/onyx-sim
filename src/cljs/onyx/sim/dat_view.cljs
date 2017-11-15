@@ -50,7 +50,7 @@
     conn
     [[:db.fn/call
       process-event
-      @(event/listen-clean-env conn sim)
+      @(event/subscribe-clean-env conn sim)
       (assoc seg
         :dat.view/inputs inputs)]]))
 
@@ -101,7 +101,7 @@
 (defn render-segment [{:as sys :keys [dat.sync.db/conn onyx.sim/sim]}
                       {:as seg}]
   (log/info "rendering seg" seg)
-  (let [env @(event/listen-clean-env conn sim)]
+  (let [env @(event/subscribe-clean-env conn sim)]
     ;; !!!: (log/info "clean" (onyx/env-summary env))
     (try
       (->
