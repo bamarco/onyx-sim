@@ -4,24 +4,8 @@
             [onyx.sim.event :as event]
             [onyx.sim.utils :as utils :refer [cat-into]]
             [datascript.core :as d]
-;;             [onyx-local-rt.impl :refer [kw->fn]]
             [onyx.static.util :refer [kw->fn]]
-            #?(:cljs [posh.reagent :as posh])))
-
-
-(def q
-  #?(:cljs
-      (comp deref posh/q)
-      :clj
-      (fn [query conn & args]
-        (apply d/q query @conn args))))
-
-(def pull
-  #?(:cljs
-      (comp deref posh/pull)
-      :clj
-      (fn [conn expr eid]
-        (d/pull @conn expr eid))))
+            [posh.reagent :as posh]))
 
 (defn compile-control [conn control-spec]
   ;; FIXME: controls are compiling more than once and are only reactive inasmuch as they depend on reactive posh data. As is it works and is merely an efficiency leak. This is a good spot to check for efficiency gains later on.
@@ -34,13 +18,13 @@
         [attr value]))))
 
 (defn pull-control [conn control-name]
-  (let [control (pull conn '[*] [:control/name control-name])]
+  (let [control @(posh/pull conn '[*] [:control/name control-name])]
 ;;     (log/info "compile-control" control)
     (compile-control conn control)))
 
 (defn ^:export control-attr [conn control-name attr]
   (get
-    (compile-control conn (pull conn [attr] [:control/name control-name]))
+    (compile-control conn @(posh/pull conn [attr] [:control/name control-name]))
     attr))
 
 ;;
