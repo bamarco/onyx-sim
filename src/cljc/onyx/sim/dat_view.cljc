@@ -130,13 +130,13 @@
 (defn render-segments->debug-sim [db parent-sim-id segs child-name]
   (let [parent-sim (d/entity db parent-sim-id)]
     (log/info "parent job" (:onyx.core/job parent-sim))
-  [(into
-     sim/default-sim
-     {:onyx.sim/title child-name
-      :onyx/type :onyx.sim/sim
-      :onyx.core/job (get-in parent-sim [:onyx.core/job :db/id])
-      :onyx.sim/env (reduce #(onyx/new-segment %1 :dat.view/render %2) (:onyx.sim/clean-env parent-sim) segs)
-      :onyx.sim/clean-env (:onyx.sim/clean-env parent-sim)})]))
+   [(into
+      sim/default-sim
+      {:onyx.sim/title child-name
+       :onyx/type :onyx.sim/sim
+       :onyx.core/job (get-in parent-sim [:onyx.core/job :db/id])
+       :onyx.sim/env (reduce #(onyx/new-segment %1 :dat.view/render %2) (:onyx.sim/clean-env parent-sim) segs)
+       :onyx.sim/clean-env (:onyx.sim/clean-env parent-sim)})]))
 
 (defn box* [;;{:as sys :keys [dat.sync.db/conn]}
             {:as seg :keys [onyx.sim/sim dat.sync.db/conn dat.view/direction dat.view/layout dat.view/style]}]
@@ -216,7 +216,7 @@
                       {:as seg :keys [dat.sync.db/conn
                                       dat.view/route
                                       db/id]}]
-  (log/info "Routing (or " id route )
+  (log/info "Routing (or " id route)
   (log/info "  conn" conn)
   (log/info "  pull" (d/pull @conn '[*] (or id [:dat.view/route route])) ")")
   (into
