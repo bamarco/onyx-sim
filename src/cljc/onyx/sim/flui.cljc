@@ -19,13 +19,13 @@
 (:cljs
   (defn code*
     "Eventually a pretty lookin code block with syntax highlighting."
-    [& {:as args :keys [code child] cl :class}]
+    [& {:as args :keys [code child pr-fn] cl :class}]
     ;; TODO: word-wrap and line numbers
     ;; TODO: syntax highlighting
     (let [args (-> args
-                   (dissoc :code)
+                   (dissoc :code :pr-fn)
                    (assoc :class (str "rc-code " cl )))
-          code (ppr-str code)]
+          code ((or pr-fn ppr-str) code)]
       (assert (not child) (str "Code should not have a :child element. Got " child))
       (mapply rc/box :child [:code [:pre code]] args))))
 

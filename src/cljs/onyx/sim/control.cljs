@@ -1,29 +1,14 @@
 (ns onyx.sim.control
   (:require [taoensso.timbre :as log]
             [onyx.sim.flui :as flui]
+            [onyx.sim.event :as event]
             [onyx.sim.utils :as utils :refer [cat-into]]
             [datascript.core :as d]
-;;             [onyx-local-rt.impl :refer [kw->fn]]
             [onyx.static.util :refer [kw->fn]]
-            #?(:cljs [posh.reagent :as posh])))
-
-
-(def q
-  #?(:cljs
-      (comp deref posh/q)
-      :clj
-      (fn [query conn & args]
-        (apply d/q query @conn args))))
-
-(def pull
-  #?(:cljs
-      (comp deref posh/pull)
-      :clj
-      (fn [conn expr eid]
-        (d/pull @conn expr eid))))
+            [posh.reagent :as posh]))
 
 (defn compile-control [conn control-spec]
-  ;; FIXME: controls are compiling more than once and are only reactive inasmuch as they depend on reactive posh data. If we ousource this to re-frame subscriptions, we won't need to re-invent the wheel. The other option is to do our own dag processing (which may happen naturally with tighter onyx integration). As is it works and is merely an efficiency leak. This is a good spot to check for efficiency gains later on.
+  ;; FIXME: controls are compiling more than once and are only reactive inasmuch as they depend on reactive posh data. As is it works and is merely an efficiency leak. This is a good spot to check for efficiency gains later on.
   (into
     {}
     (for [[attr value] control-spec]
@@ -33,11 +18,13 @@
         [attr value]))))
 
 (defn pull-control [conn control-name]
-  (compile-control conn (pull conn '[*] [:control/name control-name])))
+  (let [control @(posh/pull conn '[*] [:control/name control-name])]
+;;     (log/info "compile-control" control)
+    (compile-control conn control)))
 
 (defn ^:export control-attr [conn control-name attr]
   (get
-    (compile-control conn (pull conn [attr] [:control/name control-name]))
+    (compile-control conn @(posh/pull conn [attr] [:control/name control-name]))
     attr))
 
 ;;
@@ -74,29 +61,28 @@
    :label (control-attr conn control-name :control/label)])
 
 (defn action-button [conn control-name]
-  (let [{:keys [:control/disabled? :control/action :control/label]} (pull-control conn control-name)]
+  (let [{:keys [control/disabled? control/action control/label dat.view/event]} (pull-control conn control-name)]
     [flui/button
      :label label
      :disabled? disabled?
-     :on-click action]))
+     :on-click (partial event/dispatch! conn event)]))
 
 (defn toggle-button [conn control-name]
-  (let [{:keys [:control/label :control/toggle-label :control/toggled? :control/toggle]} (pull-control conn control-name)]
+  (let [{:keys [control/label control/toggle-label control/toggled? dat.view/event]} (pull-control conn control-name)]
     [flui/button
      :label (if toggled? (or toggle-label label) label)
-     :on-click toggle]))
+     :on-click (partial event/dispatch! conn event)]))
 
 (defn toggle-checkbox [conn control-name]
-  (let [{:keys [:control/disabled? :control/label :control/toggle-label :control/toggled? :control/toggle]} (pull-control conn control-name)]
+  (let [{:keys [control/disabled? control/label control/toggle-label control/toggled? dat.view/event]} (pull-control conn control-name)]
     [flui/checkbox
      :model toggled?
      :disabled? disabled?
      :label (if toggled? (or toggle-label label) label)
-     :on-change toggle
-      ]))
+     :on-change (partial event/dispatch! conn event)]))
 
 (defn selection-list [conn control-name]
-  (let [{:keys [:control/label :control/choices :control/chosen :control/choose :control/id-fn :control/label-fn]} (pull-control conn control-name)]
+  (let [{:keys [control/label control/choices control/chosen dat.view/event control/id-fn control/label-fn]} (pull-control conn control-name)]
     [flui/v-box
      :children
      [[flui/label
@@ -107,10 +93,10 @@
        :model chosen
        :id-fn id-fn
        :label-fn label-fn
-       :on-change choose]]]))
+       :on-change (partial event/dispatch! conn event)]]]))
 
 (defn indicator-label [conn control-name]
-  (let [{:keys [:control/label :control/display]} (pull-control conn control-name)]
+  (let [{:keys [control/label control/display]} (pull-control conn control-name)]
     [flui/h-box
      :gap "1ch"
      :children
@@ -121,23 +107,18 @@
        :label display]]]))
 
 (defn active-logo [conn control-name]
-  (let [{:keys [:control/label :control/img :control/active?]} (pull-control conn control-name)]
+  (let [{:keys [control/label control/img control/active?]} (pull-control conn control-name)]
     ;; FIXME: abrupt ending animation
-    (flui/h-box
+    [flui/h-box
       :class "active-logo"
       :children
       [[flui/box :child [:img {:class (str "active-logo-img" (when active? " spinning"))
                                :src img}]]
-       [flui/label :label label]])))
+       [flui/label :label label]]]))
 
 (defn ^:export simple-concat [db {:as seg :keys [dat.view/entity dat.view/attr dat.view/inputs]}]
   (for [input inputs]
     [:db/add entity attr input]))
-
-;; (defn ^:export toggle-select2 [db {:as seg :keys [dat.view/entity dat.view/attr dat.view/inputs]}]
-;;   [[:db/retract entity attr (get (d/entity db entity) attr)]
-;;    [:db/add entity attr #{(first inputs)}]])
-
 
 (defn ^:export simple-value [db {:as seg :keys [dat.view/entity dat.view/attr dat.view/inputs]}]
   [[:db/retract entity attr (get (d/entity db entity) attr)]
@@ -149,18 +130,7 @@
     [[:db/retract entity attr old-value]
      [:db/add entity attr (not old-value)]]))
 
-;; (defn ^:export single-as-set [{:as seg :keys [dat.view/inputs]}]
-;;   (update-in
-;;     seg
-;;     [:dat.view/inputs]
-;;     (fn [[selection]]
-
-;;     ))
-
-
 ;;
-;; dat.view/label or dat.view/label-fn and dat.view/choice
-;; dat.view/choice-id or dat.view/id-fn and dat.view/choice
 ;;
 (defn ^:export radio-choice2
   [{:keys [dat.view/dispatch! dat.view/conn]}
@@ -210,29 +180,6 @@
              component [radio-choice2 system control]]
          (assoc control :dat.view/component component))))])
 
-;; (defn create-dispatcher [conn]
-;;   (fn [{:as event :keys [dat.view/handler]} & inputs]
-;;     (d/transact!
-;;       conn
-;;       [[:db.fn/call
-;;         (onyx/kw->fn handler)
-;;         (assoc
-;;           event
-;;           :dat.view/inputs inputs)]])))
-
-;; (defn radio-choicer [conn control-name index]
-;;   (let [{:keys [control/chosen control/choices]} (pull-control conn control-name)]
-;;     [radio-choice2
-;;      {:dat.view/conn conn
-;;       :dat.view/dispatch!
-;;       (create-dispatcher conn)}
-;;      {:dat.view/label-fn :label
-;;       :dat.view/id-fn :id
-;;       :dat.view/option (get choices index)
-;;       :dat.view/selected chosen
-;;       :dat.view/entity [:control/name control-name]
-;;       :dat.view/attr :control/toggled?}]))
-
 (defn radio-choice [conn control-name index]
   (let [{:keys [control/label-fn control/id-fn control/chosen control/choices control/choose]} (pull-control conn control-name)
         label-fn (or label-fn :label)
@@ -246,9 +193,10 @@
      :on-change #(choose #{(id-fn choice)})]))
 
 (defn nav-bar [conn control-name]
-  (let [{:keys [:control/id-fn :control/label-fn :control/choices :control/choose :control/chosen]} (pull-control conn control-name)
+  (let [{:keys [control/id-fn control/label-fn control/choices dat.view/event control/chosen]} (pull-control conn control-name)
         id-fn (or id-fn :id)
         label-fn (or label-fn :label)]
+;;   (log/info "nav-bar" chosen)
     ;; ???: should the or-clause for id-fn be part of compile-controls?
     ;; ???: maybe a more generic way to do the bridging. drop nil arguments?
     [flui/horizontal-bar-tabs
@@ -256,7 +204,7 @@
      :model chosen ;; ???: treat chosen as a set always? distinction for choose one vs choose many?
      :id-fn id-fn
      :label-fn label-fn
-     :on-change choose]))
+     :on-change (partial event/dispatch! conn event)]))
 
 (defn indicator-display [conn control-name]
   (let [{:keys [:control/display]} (pull-control conn control-name)]

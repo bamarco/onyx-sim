@@ -1,22 +1,23 @@
 (ns onyx.sim.components.db
   (:require [com.stuartsierra.component :as component]
             [taoensso.timbre :as log]
-            [reagent.core :as reagent]
-            [posh.reagent :as p]
             [onyx.sim.core :as sim]
-            [onyx.sim.api :as onyx]
-            [datascript.core :as ds]
+            [posh.reagent :as posh]
+            [onyx.sim.event :as event]
             [onyx.sim.dat-view :as dat.view]
-            [dat.sync.db :as d]))
+            [datascript.core :as d]))
 
 (defn create-conn []
-  (let [conn (ds/create-conn sim/ds-schema)]
-    (p/posh! conn)
+  (let [conn (d/create-conn sim/ds-schema)]
+    (posh/posh! conn)
     (d/transact! conn sim/base-ui)
+    (event/sim! conn)
+    (d/transact! conn sim/examples)
+    (d/transact! conn [(dat.view/simulator
+                         {:onyx.sim/sim [:onyx/name :dat.view/sim]
+                          :dat.sync.db/conn conn})
+                       [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-sim [:onyx/name :dat.view/sim]]])
     (d/transact! conn (dat.view/example))
-    (d/transact! conn [(dat.view/simulator {:dat.sync.db/conn conn
-                                            :onyx.sim/sim [:onyx/name :dat.view/sim]})
-                       [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-env [:onyx/name :dat.view/sim]]])
     conn))
 
 (defrecord KnowledgeBase [conn]
@@ -27,6 +28,7 @@
       (assoc component
         :conn conn)))
   (stop [component]
+    (event/unsim! conn)
     (assoc component
       :conn nil)))
 

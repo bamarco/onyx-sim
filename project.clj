@@ -10,6 +10,7 @@
                  [org.clojure/core.async "0.3.442"]
                  [clojure-future-spec "1.9.0-alpha17"]
                  [org.clojure/math.numeric-tower "0.0.4"]
+                 [datascript "0.16.2"]
                  [re-com "0.9.0"]
                  [com.cognitect/transit-clj "0.8.300"]
                  [cljs-http "0.1.42"]
@@ -24,7 +25,6 @@
                  [org.clojure/tools.namespace "0.2.11"]
                  [reagent "0.6.0"]
                  [posh "0.5.5"]
-                 [datsync "0.0.1-alpha3"]
                  [com.taoensso/timbre "4.8.0"]
                  [org.onyxplatform/onyx-spec "0.11.0.2"]
                  [org.onyxplatform/onyx-local-rt "0.11.0.0-alpha5"]]
@@ -56,7 +56,8 @@
 
   :cljsbuild {:builds
               [{:id "app"
-                :source-paths ["src/cljs" "src/cljc" "dev"]
+                :source-paths ["src/cljs" "src/cljc"
+                               "dev"]
 
                 :figwheel {:on-jsload "onyx.sim.system/reset"}
 

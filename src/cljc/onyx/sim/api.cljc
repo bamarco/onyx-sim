@@ -1,20 +1,39 @@
 (ns onyx.sim.api
-  (:require [onyx-local-rt.api :as onyx]
-            [onyx.static.util :as util]
+  (:require [taoensso.timbre :as log]
+            [onyx-local-rt.api :as onyx]
+            [onyx.static.util]
             [onyx.sim.utils #?@(:clj (:refer [xfn])
                                      :cljs (:refer-macros [xfn]))]))
 
 
 (defonce onyx-batch-size 20)
 
-(def env-summary onyx/env-summary)
-(def init        onyx/init)
-(def tick        onyx/tick)
-(def drain       onyx/drain)
-(def new-segment onyx/new-segment)
-(def kw->fn      util/kw->fn)
+(def env-summary     onyx/env-summary)
+(def init            onyx/init)
+(def tick            onyx/tick)
+(def drain           onyx/drain)
+(def transition-env  onyx/transition-env)
+(def new-segment     onyx/new-segment)
+(def kw->fn          onyx.static.util/kw->fn)
 
-;; TODO: Additionally, :metadata may optionally contain a :job-id key. When specified, this key will be used for the job ID instead of a randomly chosen UUID. Repeated submissions of a job with the same :job-id will be treated as an idempotent action. If a job with the same ID has been submitted more than once, the original task IDs associated with the catalog will be returned, and the job will not run again, even if it has been killed or completed. It is undefined behavior to submit two jobs with the same :job-id metadata whose :workflow, :catalog, :flow-conditions, etc are not equal.
+(defn new-inputs [env inputs]
+  (reduce
+    (fn [env [task-name segments]]
+      (reduce
+        (fn [env segment]
+          (onyx/new-segment env task-name segment))
+        env
+        segments))
+    env
+    inputs))
+
+(defmethod onyx/transition-env ::inputs
+  [env {:keys [inputs]}]
+  (new-inputs env inputs))
+
+(defmethod onyx/transition-env ::init
+  [env {:keys [sim job]}]
+    (onyx/init job))
 
 (defn out
   "Returns outputs of onyx job presumably after draining."
@@ -47,13 +66,29 @@
     (range 1000)))
 
 (defn remove-segment [env output-task segment]
-  (onyx/transition-env env {:event :remove-segment
+  (onyx/transition-env env {:event ::remove-segment
                             :task output-task
                             :segment segment}))
 
-(defmethod onyx/transition-env :remove-segment
+(defmethod onyx/transition-env ::step
+  [env _]
+  (step env))
+
+(defmethod onyx/transition-env ::tick
+  [env _]
+  (onyx/tick env))
+
+(defmethod onyx/transition-env ::drain
+  [env _]
+  (onyx/drain env))
+
+(defmethod onyx/transition-env ::remove-segment
   [env {:keys [task segment]}]
   (update-in env [:tasks task :outputs] (partial into [] (remove #(= segment %)))))
+
+(defmethod onyx/transition-env ::new-segment
+  [env {:keys [task segment]}]
+  (onyx/new-segment env task segment))
 
 (defn onyx-feed-loop [env & selections]
   ;; TODO: :in and :render need to be genericized
@@ -63,6 +98,3 @@
           (remove-segment :render selection)))
     env
     selections))
-
-
-
