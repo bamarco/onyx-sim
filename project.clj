@@ -31,9 +31,9 @@
 
 
   :plugins [[lein-cljsbuild "1.1.6"]
-            [lein-environ "1.1.0"]
+            [lein-environ "1.1.0"]]
 ;;             [nightlight/lein-nightlight "1.7.2"]
-            ]
+
 
   :min-lein-version "2.6.1"
 
@@ -51,7 +51,8 @@
   ;; nREPL by default starts in the :main namespace, we want to start in `user`
   ;; because that's where our development helper functions like (go) and
   ;; (browser-repl) live.
-  :repl-options {:init-ns user}
+  :repl-options {:init-ns user
+                 :port 4334}
 
   :cljsbuild {:builds
               [{:id "app"
