@@ -9,7 +9,10 @@
                  [org.clojure/tools.reader "1.0.0-beta3"]
                  [org.clojure/core.async "0.3.442"]
                  [clojure-future-spec "1.9.0-alpha17"]
+
                  [org.clojure/math.numeric-tower "0.0.4"]
+;;                  [com.andrewmcveigh/cljs-time "0.5.2"]
+
                  [datascript "0.16.2"]
                  [re-com "0.9.0"]
                  [com.cognitect/transit-clj "0.8.300"]
@@ -17,7 +20,8 @@
                  [ring "1.6.2"]
                  [ring/ring-defaults "0.3.1"]
                  [bk/ring-gzip "0.2.1"]
-                 [radicalzephyr/ring.middleware.logger "0.6.0"]
+;;                  [radicalzephyr/ring.middleware.logger "0.6.0"]
+                 [ring-logger-timbre "0.7.6"]
                  [compojure "1.6.0"]
                  [environ "1.1.0"]
                  [com.stuartsierra/component "0.3.2"]
@@ -25,6 +29,7 @@
                  [org.clojure/tools.namespace "0.2.11"]
                  [reagent "0.6.0"]
                  [posh "0.5.5"]
+                 [hiccup "1.0.5"]
                  [com.taoensso/timbre "4.8.0"]
                  [org.onyxplatform/onyx-spec "0.11.0.2"]
                  [org.onyxplatform/onyx-local-rt "0.11.0.0-alpha5"]]
@@ -91,7 +96,7 @@
   :figwheel {;; :http-server-root "public"       ;; serve static assets from resources/public/
              ;; :server-port 3449                ;; default
              ;; :server-ip "127.0.0.1"           ;; default
-             :css-dirs ["resources/public/css"]  ;; watch and update CSS
+             :css-dirs ["resources/public/css" "resources/public/ns"]  ;; watch and update CSS
 
              ;; Start an nREPL server into the running figwheel process. We
              ;; don't do this, instead we do the opposite, running figwheel from
@@ -117,11 +122,12 @@
                              [figwheel-sidecar "0.5.11"]
                              [com.cemerick/piggieback "0.2.2"]
                              [org.clojure/tools.nrepl "0.2.13"]
-                             [lein-doo "0.1.7"]
+;;                              [lein-doo "0.1.7"]
                              [reloaded.repl "0.2.3"]]
 
               :plugins [[lein-figwheel "0.5.11"]
-                        [lein-doo "0.1.7"]]
+;;                         [lein-doo "0.1.7"]
+                        ]
 
               :source-paths ["dev"]
               :repl-options {:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}}
