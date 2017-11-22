@@ -283,8 +283,8 @@
    :onyx/name {:db/unique :db.unique/identity}
    :control/name {:db/unique :db.unique/identity}
    :dat.view/route {:db/unique :db.unique/identity}
-   :dat.view/layout {:db.type :db.type/ref
-                     :db/cardinality :db.cardinality/many}
+   :dat.view.rep/layout {:db.type :db.type/ref
+                         :db/cardinality :db.cardinality/many}
    :onyx.core/job {:db/type :db.type/ref}
    :onyx.sim/selected-sim {:db/type :db.type/ref}
    :onyx.sim/env {:db/type :db.type/ref}})
@@ -302,7 +302,7 @@
     :db/unique :db.unique/identity}
    {:db/ident :dat.view/route
     :db/unique :db.unique/identity}
-   {:db/ident :dat.view/layout
+   {:db/ident :dat.view.rep/layout
     :db.type :db.type/ref
     :db/cardinality :db.cardinality/many}
    {:db/ident :onyx.core/job

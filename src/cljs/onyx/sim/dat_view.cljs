@@ -12,8 +12,8 @@
 ;;; Predicates
 ;;;
 (defn ^:export represent? [event old-seg seg all-new represent]
-;;   (log/info "represent?" represent (= (:dat.view/represent seg) represent))
-  (= (:dat.view/represent seg) represent))
+;;   (log/info "represent?" represent (= (:dat.view.rep/handler seg) represent))
+  (= (:dat.view.rep/handler seg) represent))
 
 ;;;
 ;;; Helpers
@@ -25,10 +25,6 @@
       (fn [[alias-attr path]]
         [alias-attr (get-in seg path)]))
     alias-map))
-
-(defn ^:export with-context
-  [{:as event :keys [dat.view/alias]} seg]
-  (into (or event {}) (map-alias alias seg)))
 
 (defn parse-find-vars [q-expr]
   ;; TODO: implement. for now a hardcoded value for testing
@@ -97,7 +93,7 @@
 (defn ^:export sim-render [outputs]
   [flui/h-box
    :children
-   (mapv :dat.view/component outputs)])
+   (mapv :dat.view.rep/component outputs)])
 
 ;;;
 ;;; Onyx render
@@ -115,7 +111,7 @@
         :dat.view/mount
         :outputs
         first
-        :dat.view/component)
+        :dat.view.rep/component)
       (catch :default e
         [sim/sim-debug
          sys
@@ -138,9 +134,9 @@
 ;;     ))
 
 (defn box* [{:as sys :keys [dat.sync.db/conn onyx.sim/sim]}
-            {:as seg :keys [dat.view/direction
-                            dat.view/layout
-                            dat.view/style]}]
+            {:as seg :keys [dat.view.rep/direction
+                            dat.view.rep/layout
+                            dat.view.rep/style]}]
   (let [children (map
                    (fn [child]
                      [render-segment
@@ -166,35 +162,35 @@
 (defn ^:export box [sys seg]
   (assoc
     seg
-    :dat.view/component
+    :dat.view.rep/component
     [box* sys seg]))
 
-(defn ^:export label [{:as seg :keys [dat.view/label]}]
+(defn ^:export label [{:as seg :keys [dat.view.rep/label]}]
   (assoc
     seg
-    :dat.view/component
+    :dat.view.rep/component
     [flui/label :label label]))
 
 (defn ^:export checkbox [sys
-                         {:as seg :keys [dat.view/label
-                                         dat.view/toggled?]}]
+                         {:as seg :keys [dat.view.rep/label
+                                         dat.view.rep/toggled?]}]
   (let [default-event {:dat.view.event/handler ::simple-toggle
                        :dat.view.event/entity (:db/id seg)
-                       :dat.view.event/attr :dat.view/toggled?}]
+                       :dat.view.event/attr :dat.view.rep/toggled?}]
     (assoc
       seg
-      :dat.view/component
+      :dat.view.rep/component
       [flui/checkbox
        :model toggled?
        :label label
        :on-change #(dispatch! sys (into default-event seg))])))
 
 (defn ^:export text-input [sys
-                           {:as seg :keys [dat.view/label]}]
+                           {:as seg :keys [dat.view.rep/label]}]
 ;;   (log/info "text-input" label (:onyx.sim/sim sys) event)
   (assoc
     seg
-    :dat.view/component
+    :dat.view.rep/component
     [flui/input-text
      :model label
      :on-change (partial dispatch! sys seg)]))
@@ -202,11 +198,10 @@
 (defn ^:export default [seg]
   (assoc
     seg
-    :dat.view/component
+    :dat.view.rep/component
     [flui/p (str "Unknown representation:" seg)]))
 
-(defn locate-conn [seg]
-  (-> seg meta :dat.sync.db/conn))
+
 
 ;;;
 ;;; Subscription Tasks
@@ -214,45 +209,50 @@
 (defn ^:export route [{:as sys :keys [dat.sync.db/conn]}
                       {:as seg :keys [dat.view/route
                                       db/id]}]
-  (log/info "Routing (or " id route)
-  (log/info "  conn" conn)
-  (log/info "  pull" (d/pull @conn '[*] (or id [:dat.view/route route])) ")")
+;;   (log/info "Routing (or " id route)
+;;   (log/info "  conn" conn)
+;;   (log/info "  pull" (d/pull @conn '[*] (or id [:dat.view/route route])) ")")
   (into
     seg
     @(posh/pull conn '[*] (or id [:dat.view/route route]))))
 
 (defn ^:export pull [{:as sys :keys [dat.sync.db/conn]}
-                     {:as seg :keys [dat.view/pull-expr
-                                     dat.view/entity
-                                     dat.view/alias]}]
+                     {:as seg :keys [dat.view.sub/pull-expr
+                                     dat.view.sub/handler
+                                     dat.view.sub/entity
+                                     dat.view.sub/alias]}]
 ;;   (log/info "pull")
 ;;   (log/info pull-expr entity)
   (map-alias
     alias
     (into
       seg
-      (when pull-expr
+      (when (= handler :dat.view.subscribe/pull)
         @(posh/pull conn pull-expr entity)))))
 
 (defn ^:export query [{:as sys :keys [dat.sync.db/conn]}
-                      {:as seg :keys [dat.view/q-expr
-                                      dat.view/inputs
-                                      dat.view/layout-alias
-                                      dat.view/layout-value]}]
+                      {:as seg :keys [dat.view.sub/q-expr
+                                      dat.view.sub/inputs
+                                      dat.view.sub/handler
+                                      dat.view.sub/alias
+                                      dat.view.sub/row-alias
+                                      dat.view.sub/row-base]}]
 ;;   (log/info "dat-view-query")
   (let [find-vars (parse-find-vars q-expr)
-        relation (when q-expr
+        relation (when (= handler :dat.view.subscribe/query)
                    @(apply posh/q q-expr conn inputs))]
-    (into
-      seg
-      (when relation
-        {:dat.view/layout
-         (mapv
-           (fn [row]
-             (into
-               (or layout-value {})
-               (map-alias layout-alias (zipmap find-vars row))))
-           relation)}))))
+
+    (map-alias
+      alias
+      (assoc
+        seg
+        :dat.view.sub/relation
+        (mapv
+          (fn [row]
+            (into
+              (or row-base {})
+              (map-alias row-alias (zipmap find-vars row))))
+          relation)))))
 
 
 ;;;
@@ -276,7 +276,7 @@
      :onyx/fn ::intent
      :onyx/batch-size onyx-batch-size}
 
-    {:onyx/name :dat.view.subscribe/route
+    {:onyx/name :dat.view.sub/route
      ;; TODO: can we get the doc from the funtion itself???
      ;; ???: markdown
      :onyx/doc "This posh/pulls '[*] the :dat.view/route and merges into the segment"
@@ -284,7 +284,7 @@
      :onyx/fn ::route
      :onyx/batch-size onyx-batch-size}
     {:onyx/name :dat.view.subscribe/pull
-     :onyx/doc "If this segment has a :dat.view/pull-expr, then posh/pull"
+     :onyx/doc "If this segment has a :dat.view.sub/pull-expr, then posh/pull"
      :onyx/type :function
      :onyx/fn ::pull
      :onyx/batch-size onyx-batch-size}
@@ -328,7 +328,7 @@
    :onyx.core/catalog (catalog)
 
    :onyx.core/lifecycles
-   [{:lifecycle/task :dat.view.subscribe/route
+   [{:lifecycle/task :dat.view.sub/route
      :lifecycle/calls ::meta-lifecycle}
     {:lifecycle/task :dat.view.subscribe/pull
      :lifecycle/calls ::meta-lifecycle}
@@ -344,8 +344,8 @@
    :onyx.core/workflow
    [[:dat.view/dispatch :dat.view.event/intent]
     [:dat.view.event/intent :dat.sync/transact]
-    [:dat.view/render :dat.view.subscribe/route]
-    [:dat.view.subscribe/route :dat.view.subscribe/query]
+    [:dat.view/render :dat.view.sub/route]
+    [:dat.view.sub/route :dat.view.subscribe/query]
     [:dat.view.subscribe/query :dat.view.subscribe/pull]
 
     [:dat.view.subscribe/pull :dat.view.represent/default]
@@ -363,23 +363,23 @@
    :onyx.core/flow-conditions
    [{:flow/from :dat.view.subscribe/pull
      :flow/to [:dat.view.represent/box]
-     :dat.view/represent :dat.view.represent/box
-     :flow/predicate [::represent? :dat.view/represent]
+     :dat.view.rep/handler :dat.view.represent/box
+     :flow/predicate [::represent? :dat.view.rep/handler]
      :flow/short-circuit? true}
     {:flow/from :dat.view.subscribe/pull
      :flow/to [:dat.view.represent/label]
-     :dat.view/represent :dat.view.represent/label
-     :flow/predicate [::represent? :dat.view/represent]
+     :dat.view.rep/handler :dat.view.represent/label
+     :flow/predicate [::represent? :dat.view.rep/handler]
      :flow/short-circuit? true}
     {:flow/from :dat.view.subscribe/pull
      :flow/to [:dat.view.represent/checkbox]
-     :dat.view/represent :dat.view.represent/checkbox
-     :flow/predicate [::represent? :dat.view/represent]
+     :dat.view.rep/handler :dat.view.represent/checkbox
+     :flow/predicate [::represent? :dat.view.rep/handler]
      :flow/short-circuit? true}
     {:flow/from :dat.view.subscribe/pull
      :flow/to [:dat.view.represent/text-input]
-     :dat.view/represent :dat.view.represent/text-input
-     :flow/predicate [::represent? :dat.view/represent]
+     :dat.view.rep/handler :dat.view.represent/text-input
+     :flow/predicate [::represent? :dat.view.rep/handler]
      :flow/short-circuit? true}
     {:flow/from :dat.view.subscribe/pull
      :flow/to [:dat.view.represent/default]
@@ -411,50 +411,55 @@
 (defn example []
    [{:e/type :e.type/Todo
      :e/name "Test Todo"
-     :dat.view/toggled? false}
+     :dat.view.rep/toggled? false}
     {:onyx/name :example-label
      :e/type :e.type/Todo
      :e/name "Bake a Cake"
-     :dat.view/toggled? true}
+     :dat.view.rep/toggled? true}
+
     {:dat.view/route :dat.view/hello-world
-     :dat.view/represent :dat.view.represent/label
-     :dat.view/label "Hello, World!"}
+     :dat.view.rep/handler :dat.view.represent/label
+     :dat.view.rep/label "Hello, World!"}
     {:dat.view/route :dat.view/bye-world
-     :dat.view/represent :dat.view.represent/text-input
+     :dat.view.rep/handler :dat.view.represent/text-input
      :dat.view.event/handler ::simple-value
      :dat.view.event/entity [:dat.view/route :dat.view/bye-world]
-     :dat.view.event/attr :dat.view/label
-     :dat.view/label "Goodbye, World!"}
+     :dat.view.event/attr :dat.view.rep/label
+     :dat.view.rep/label "Goodbye, World!"}
     {:dat.view/route :dat.view/bye-world2
-     :dat.view/subscribe :dat.view.subscribe/pull
-     :dat.view/represent :dat.view.represent/label
-     :dat.view/pull-expr [:dat.view/label]
-     :dat.view/entity [:dat.view/route :dat.view/bye-world]}
+     :dat.view.sub/handler :dat.view.subscribe/pull
+     :dat.view.rep/handler :dat.view.represent/label
+     :dat.view.sub/pull-expr [:dat.view.rep/label]
+     :dat.view.sub/entity [:dat.view/route :dat.view/bye-world]}
+
     {:dat.view/route :example/todo-name
-     :dat.view/subscribe :dat.view.subscribe/pull
-     :dat.view/represent :dat.view.represent/label
-     :dat.view/pull-expr [:e/name]
-     :dat.view/alias {:dat.view/label [:e/name]}
-     :dat.view/entity [:onyx/name :example-label]}
+     :dat.view.sub/handler :dat.view.subscribe/pull
+     :dat.view.rep/handler :dat.view.represent/label
+     :dat.view.sub/pull-expr [:e/name]
+     :dat.view.sub/alias {:dat.view.rep/label [:e/name]}
+     :dat.view.sub/entity [:onyx/name :example-label]}
+
     {:dat.view/route :dat.view.route/index
-     :dat.view/style {:background-color :LightGray}
-     :dat.view/direction :vertical
-     :dat.view/represent :dat.view.represent/box
-     :dat.view/layout [[:dat.view/route :dat.view/hello-world]
-                       [:dat.view/route :dat.view/bye-world]
-                       [:dat.view/route :dat.view/bye-world2]]}
+     :dat.view.rep/style {:background-color :LightGray}
+     :dat.view.rep/direction :vertical
+     :dat.view.rep/handler :dat.view.represent/box
+     :dat.view.rep/layout [[:dat.view/route :dat.view/hello-world]
+                           [:dat.view/route :dat.view/bye-world]
+                           [:dat.view/route :dat.view/bye-world2]]}
+
     {:dat.view/route :dat.view.route/todos
-     :dat.view/subscribe :dat.view.subscribe/query
-     :dat.view/represent :dat.view.represent/box
-     :dat.view/q-expr todos-query
-     :dat.view/layout-value {:dat.view/route :dat.view.route/todo}
-     :dat.view/layout-alias '{:dat.view/entity [:?todo]}}
+     :dat.view.sub/handler :dat.view.subscribe/query
+     :dat.view.rep/handler :dat.view.represent/box
+     :dat.view.sub/q-expr todos-query
+     :dat.view.sub/row-base {:dat.view/route :dat.view.route/todo}
+     :dat.view.sub/row-alias '{:dat.view.sub/entity [:?todo]}
+     :dat.view.sub/alias {:dat.view.rep/layout [:dat.view.sub/relation]}}
     {:dat.view/route :dat.view.route/todo
-     :dat.view/subscribe :dat.view.subscribe/pull
-     :dat.view/represent :dat.view.represent/checkbox
-     :dat.view/pull-expr `[:e/name :dat.view/toggled?]
-     :dat.view/alias {:dat.view/label [:e/name]
-                      :dat.view.event/entity [:db/id]}
+     :dat.view.sub/handler :dat.view.subscribe/pull
+     :dat.view.rep/handler :dat.view.represent/checkbox
+     :dat.view.sub/pull-expr `[:e/name :dat.view.rep/toggled?]
+     :dat.view.sub/alias {:dat.view.rep/label [:e/name]
+                          :dat.view.event/entity [:db/id]}
      ;; Note: these event attrss are optional since they are identical to the default event for checkbox
      :dat.view.event/handler ::simple-toggle
-     :dat.view.event/attr :dat.view/toggled?}])
+     :dat.view.event/attr :dat.view.rep/toggled?}])
