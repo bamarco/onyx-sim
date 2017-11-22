@@ -4,9 +4,68 @@
 
 Try it out here: https://onyx-sim.herokuapp.com/
 
-onyx simimulator is an interactive implementation of the [onyx local runtime](https://github.com/onyx-platform/onyx-local-rt). It will soon be a core component of the [datsys](https://github.com/metasoarous/datsys) project. Right now the codebase includes a bunch of experiments for future [datview](https://github.com/metasoarous/datview).
+Onyx simimulator is an interactive implementation of the [onyx local runtime](https://github.com/onyx-platform/onyx-local-rt).
 
 No maven deployment yet so git clone if you want to use it. It's in alpha, but moving to beta soon.
+
+## Dat View
+
+Onyx-sim is a temporary home for future [datview](https://github.com/metasoarous/datview) part of the [datsys](https://github.com/metasoarous/datsys) project.
+
+What is a segment?
+
+You can think of a segment as a plain clojure map or object or record. In onyx it is called a segment partially because it could be broken into peices and distributed to various tasks.
+
+
+What is a task?
+
+Basically a function with some extra meta-data.
+
+
+Beginning of spec for dat.view here:
+
+```clojure
+
+dat-view-entity            = datascript entity containing some of the following keys:
+
+:dat.view/route            = keyword used for identing datview data to be assoc'd into the segment
+
+
+dat-view-alias             = {alias-target-key alias-source-path}
+alias-target-key           = keyword which will be assoc'd into the current segment
+alias-source-path          = get-in style vector which contains the value you wish to assoc
+
+
+:dat.view/subscribe        = keyword type of subscription describing this
+
+:dat.view.sub/pull-expr    = datascript pull-expr
+
+:dat.view.sub/entity       = datascript entity to be pulled
+
+:dat.view.sub/q-expr       = datascript expr to be fed to q
+
+:dat.view.sub/inputs       = data to be fed into q
+
+:dat.view.sub/alias        = dat-view-alias that fires during the subscription layer
+
+
+:dat.view/represent        = keyword selecting which dat.view component function should be applied to this segment
+
+:dat.view/style            = inline css in clojure map format
+
+:dat.view/component        = reagent vector intended to be displayed. This is not pure data, but an actual reagent component.
+
+
+:dat.view.event/handler    = keyword selecting the event handler to use for this segment
+
+:dat.view.event/attr       = keyword attr event target
+
+:dat.view.event/entity     = local eid for event target
+
+:dat.view.event/context    = set of attr keys from this segment to include in the event for dispatch. #{:dat.view.event/handler :dat.view.event/attr :dat.view.event/attr} included by default
+
+
+```
 
 
 ## Development

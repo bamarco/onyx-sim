@@ -43,7 +43,9 @@
         first
         :dat.sync.db/txs))
 
-(defn dispatch! [{:as sys :keys [dat.sync.db/conn onyx.sim/sim]} seg & inputs]
+(defn dispatch! [{:as sys :keys [dat.sync.db/conn onyx.sim/sim]}
+                 {:as seg :keys [dat.view.event/context]}
+                 & inputs]
   ;; ???: what happens when you listen to a ratom inside a dispatch method?
   ;; ???: make dispatch! a lifecycle item.
   (d/transact!
@@ -51,20 +53,22 @@
     [[:db.fn/call
       process-event
       @(event/subscribe-clean-env conn sim)
-      (assoc seg
-        :dat.view/inputs inputs)]]))
+      (assoc
+        (select-keys seg (into #{:dat.view.event/handler :dat.view.event/entity :dat.view.event/attr} context))
+        :dat.view.event/inputs
+        inputs)]]))
 
 ;;;
 ;;; Event
 ;;;
-(defn ^:export simple-toggle [db {:keys [dat.view/entity dat.view/attr dat.view/inputs]}]
+(defn ^:export simple-toggle [db {:keys [dat.view.event/entity dat.view.event/attr]}]
   (let [{:as e :keys [db/id]} (d/entity db entity)
         v (get e attr)]
 ;;     (log/info "toggle" [id attr] "from" v "to" (not v))
     [[:db/retract id attr v]
      [:db/add id attr (not v)]]))
 
-(defn ^:export simple-value [db {:keys [dat.view/entity dat.view/attr dat.view/inputs]}]
+(defn ^:export simple-value [db {:keys [dat.view.event/entity dat.view.event/attr dat.view.event/inputs]}]
   (let [{:as e :keys [db/id]} (d/entity db entity)
         old-v (get e attr)
         new-v (first inputs)]
@@ -72,7 +76,7 @@
     [[:db/retract id attr old-v]
      [:db/add id attr new-v]]))
 
-(defn ^:export intent [{:as seg :keys [dat.sync.db/snapshot dat.view/handler]}]
+(defn ^:export intent [{:as seg :keys [dat.sync.db/snapshot dat.view.event/handler]}]
 ;;   (log/info "intenting" handler seg)
   {:dat.sync.db/txs
    (case handler
@@ -173,29 +177,27 @@
 
 (defn ^:export checkbox [sys
                          {:as seg :keys [dat.view/label
-                                         dat.view/toggled?
-                                         dat.view/event]}]
-  (let [default-event {:dat.view/handler ::simple-toggle
-                       :dat.view/entity (:db/id seg)
-                       :dat.view/attr :dat.view/toggled?}]
+                                         dat.view/toggled?]}]
+  (let [default-event {:dat.view.event/handler ::simple-toggle
+                       :dat.view.event/entity (:db/id seg)
+                       :dat.view.event/attr :dat.view/toggled?}]
     (assoc
       seg
       :dat.view/component
       [flui/checkbox
        :model toggled?
        :label label
-       :on-change #(dispatch! sys (into default-event (with-context event seg)))])))
+       :on-change #(dispatch! sys (into default-event seg))])))
 
 (defn ^:export text-input [sys
-                           {:as seg :keys [dat.view/label
-                                           dat.view/event]}]
+                           {:as seg :keys [dat.view/label]}]
 ;;   (log/info "text-input" label (:onyx.sim/sim sys) event)
   (assoc
     seg
     :dat.view/component
     [flui/input-text
      :model label
-     :on-change (partial dispatch! sys (with-context event seg))]))
+     :on-change (partial dispatch! sys seg)]))
 
 (defn ^:export default [seg]
   (assoc
@@ -419,9 +421,9 @@
      :dat.view/label "Hello, World!"}
     {:dat.view/route :dat.view/bye-world
      :dat.view/represent :dat.view.represent/text-input
-     :dat.view/event {:dat.view/handler ::simple-value
-                      :dat.view/entity [:dat.view/route :dat.view/bye-world]
-                      :dat.view/attr :dat.view/label}
+     :dat.view.event/handler ::simple-value
+     :dat.view.event/entity [:dat.view/route :dat.view/bye-world]
+     :dat.view.event/attr :dat.view/label
      :dat.view/label "Goodbye, World!"}
     {:dat.view/route :dat.view/bye-world2
      :dat.view/subscribe :dat.view.subscribe/pull
@@ -451,8 +453,8 @@
      :dat.view/subscribe :dat.view.subscribe/pull
      :dat.view/represent :dat.view.represent/checkbox
      :dat.view/pull-expr `[:e/name :dat.view/toggled?]
-     :dat.view/alias {:dat.view/label [:e/name]}
-     ;; Note: this event is optional since it is identical to the default event for checkbox
-     :dat.view/event {:dat.view/handler ::simple-toggle
-                      :dat.view/attr :dat.view/toggled?
-                      :dat.view/alias {:dat.view/entity [:db/id]}}}])
+     :dat.view/alias {:dat.view/label [:e/name]
+                      :dat.view.event/entity [:db/id]}
+     ;; Note: these event attrss are optional since they are identical to the default event for checkbox
+     :dat.view.event/handler ::simple-toggle
+     :dat.view.event/attr :dat.view/toggled?}])
