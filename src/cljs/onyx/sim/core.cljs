@@ -276,25 +276,25 @@
      :control/label-fn (::task-labeler)}])
 
 (def ds-schema
-  {:onyx.core/catalog {:db/type :db.type/ref
+  {:onyx.core/catalog {:db/valueType :db.type/ref
                        :db/cardinality :db.cardinality/many}
-   :onyx.sim.view/options {:db/type :db.type/ref
+   :onyx.sim.view/options {:db/valueType :db.type/ref
                            :db/cardinality :db.cardinality/many}
    :onyx/name {:db/unique :db.unique/identity}
    :control/name {:db/unique :db.unique/identity}
    :dat.view/route {:db/unique :db.unique/identity}
    :dat.view.rep/layout {:db.type :db.type/ref
                          :db/cardinality :db.cardinality/many}
-   :onyx.core/job {:db/type :db.type/ref}
-   :onyx.sim/selected-sim {:db/type :db.type/ref}
-   :onyx.sim/env {:db/type :db.type/ref}})
+   :onyx.core/job {:db/valueType :db.type/ref}
+   :onyx.sim/selected-sim {:db/valueType :db.type/ref}
+   :onyx.sim/env {:db/valueType :db.type/ref}})
 
 (def schema-idents
   [{:db/ident :onyx.core/catalog
-    :db/type :db.type/ref
+    :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/many}
    {:db/ident :onyx.sim.view/options
-    :db/type :db.type/ref
+    :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/many}
    {:db/ident :onyx/name
     :db/unique :db.unique/identity}
@@ -306,11 +306,11 @@
     :db.type :db.type/ref
     :db/cardinality :db.cardinality/many}
    {:db/ident :onyx.core/job
-    :db/type :db.type/ref}
+    :db/valueType :db.type/ref}
    {:db/ident :onyx.sim/selected-sim
-    :db/type :db.type/ref}
+    :db/valueType :db.type/ref}
    {:db/ident :onyx.sim/env
-    :db/type :db.type/ref}])
+    :db/valueType :db.type/ref}])
 
 ;;;
 ;;; Lifecycles
@@ -388,12 +388,12 @@
 ;;;
 (def base-ui
   (into
-    control-catalog
     [{:onyx/name :onyx.sim/settings
       :onyx.sim/selected-view :settings
       :onyx.sim/animation-transitions [{:event :onyx.sim.api/tick}]
       :onyx.sim/frames-between-animation 30
-      :onyx.sim/animating? false}]))
+      :onyx.sim/animating? false}]
+    control-catalog))
 
 (def examples
   [(make-sim
@@ -414,8 +414,9 @@
    [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-view :onyx.sim/sim-view]])
 
 (defn selected-sim [conn]
-  (let [{{:keys [db/id]} :onyx.sim/selected-sim} @(posh/pull conn '[:onyx.sim/selected-sim] [:onyx/name :onyx.sim/settings])]
-    id))
+  (let [{:keys [onyx.sim/selected-sim]} @(posh/pull conn '[:onyx.sim/selected-sim] [:onyx/name :onyx.sim/settings])]
+    (log/info "selected-sim is:" selected-sim)
+    (:db/id selected-sim)))
 
 ;;
 ;; VIEWS
@@ -522,7 +523,8 @@
         []
         (for [task-name (remove (or hidden-tasks #{}) sorted-tasks)]
           ^{:key (:onyx/name task-name)}
-          [pretty-task-box conn (assoc seg :onyx.sim/task-name task-name)]))]))
+          [pretty-task-box conn (assoc seg :onyx.sim/task-name task-name)]))]
+    ))
 
 (defn summary [conn {:keys [onyx.sim/sim onyx.sim/summary-fn]}]
   (let [summary-fn (or summary-fn onyx/env-summary)
@@ -593,7 +595,9 @@
     description))
 
 (defn ^:export hidden-tasks [conn]
-  (:onyx.sim/hidden-tasks @(posh/pull conn '[:onyx.sim/hidden-tasks] (selected-sim conn))))
+  (let [sim (selected-sim conn)]
+    (log/info "hidden-tasks sim:" sim)
+    (:onyx.sim/hidden-tasks @(posh/pull conn '[:onyx.sim/hidden-tasks] sim))))
 
 (defn ^:export view-choices [conn]
   (let [sims @(posh/q '[:find ?title ?sim
@@ -616,14 +620,20 @@
      ])))
 
 (defn ^:export sorted-tasks [conn]
+  (log/info "sorted-tasks!!!")
   (let [sim (selected-sim conn)
-       {:keys [sorted-tasks]} @(pull-env conn sim)
-         {{:keys [onyx.core/catalog]} :onyx.core/job}
+        {:keys [sorted-tasks]} @(pull-env conn sim)
+         _ (log/info "sorted:" sim sorted-tasks)
+
+        {:keys [onyx.core/job]}
         @(posh/pull
-          conn
-          '[{:onyx.core/job [{:onyx.core/catalog [*]}]}]
-          sim)
-        task-possible (into {} (map (juxt :onyx/name identity) catalog))
+           conn
+           '[{:onyx.core/job [{:onyx.core/catalog [*]}]}]
+               sim)
+
+        _ (log/info "catalog" job (:onyx.core/catalog job))
+        task-possible (into {} (map (juxt :onyx/name identity) (:onyx.core/catalog job)))
+        _ (log/info "task-possible" task-possible)
         task-choices (map task-possible sorted-tasks)]
     task-choices))
 
@@ -650,6 +660,7 @@
     [control/toggle-button conn :onyx.sim/play]]])
 
 (defn sim-view [conn {:as seg :keys [onyx.sim/sim]}]
+  (log/info "selected-sim" sim)
   [flui/v-box
    :children
    [[control/when-show?
@@ -733,6 +744,7 @@
 
 (defn content-view [conn]
   (let [view (selected-view conn)]
+    (log/info "selected-view" view)
     [flui/box
      :class "onyx-sim"
      :child
