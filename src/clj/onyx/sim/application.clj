@@ -4,9 +4,18 @@
             [system.components.endpoint :refer [new-endpoint]]
             [system.components.handler :refer [new-handler]]
             [system.components.middleware :refer [new-middleware]]
-            [system.components.jetty :refer [new-web-server]]
+            [system.components.http-kit :as http-kit]
             [onyx.sim.config :refer [config]]
-            [onyx.sim.routes :refer [home-routes]]))
+            [onyx.sim.routes :refer [home-routes]]
+            [taoensso.timbre :as log]))
+
+(defn new-server [{:as config :keys [http-port]}]
+  (log/info "Starting http server on port:" http-port)
+  ;; Deprecated way still works:
+  (http-kit/new-web-server http-port)
+  ;; New way doesn't work yet:
+  ;; (http-kit/new-http-kit :port http-port)
+  )
 
 (defn app-system [config]
   (component/system-map
@@ -14,7 +23,7 @@
    :middleware (new-middleware {:middleware (:middleware config)})
    :handler    (-> (new-handler)
                    (component/using [:routes :middleware]))
-   :http       (-> (new-web-server (:http-port config))
+   :http       (-> (new-server config)
                    (component/using [:handler]))))
 
 (defn -main [& _]

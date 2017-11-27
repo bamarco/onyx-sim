@@ -415,7 +415,7 @@
 
 (defn selected-sim [conn]
   (let [{:keys [onyx.sim/selected-sim]} @(posh/pull conn '[:onyx.sim/selected-sim] [:onyx/name :onyx.sim/settings])]
-    (log/info "selected-sim is:" selected-sim)
+;;     (log/info "selected-sim is:" selected-sim)
     (:db/id selected-sim)))
 
 ;;
@@ -596,7 +596,7 @@
 
 (defn ^:export hidden-tasks [conn]
   (let [sim (selected-sim conn)]
-    (log/info "hidden-tasks sim:" sim)
+;;     (log/info "hidden-tasks sim:" sim)
     (:onyx.sim/hidden-tasks @(posh/pull conn '[:onyx.sim/hidden-tasks] sim))))
 
 (defn ^:export view-choices [conn]
@@ -620,10 +620,10 @@
      ])))
 
 (defn ^:export sorted-tasks [conn]
-  (log/info "sorted-tasks!!!")
+;;   (log/info "sorted-tasks!!!")
   (let [sim (selected-sim conn)
         {:keys [sorted-tasks]} @(pull-env conn sim)
-         _ (log/info "sorted:" sim sorted-tasks)
+;;          _ (log/info "sorted:" sim sorted-tasks)
 
         {:keys [onyx.core/job]}
         @(posh/pull
@@ -631,9 +631,9 @@
            '[{:onyx.core/job [{:onyx.core/catalog [*]}]}]
                sim)
 
-        _ (log/info "catalog" job (:onyx.core/catalog job))
+;;         _ (log/info "catalog" job (:onyx.core/catalog job))
         task-possible (into {} (map (juxt :onyx/name identity) (:onyx.core/catalog job)))
-        _ (log/info "task-possible" task-possible)
+;;         _ (log/info "task-possible" task-possible)
         task-choices (map task-possible sorted-tasks)]
     task-choices))
 
@@ -660,7 +660,7 @@
     [control/toggle-button conn :onyx.sim/play]]])
 
 (defn sim-view [conn {:as seg :keys [onyx.sim/sim]}]
-  (log/info "selected-sim" sim)
+;;   (log/info "selected-sim" sim)
   [flui/v-box
    :children
    [[control/when-show?
@@ -744,7 +744,7 @@
 
 (defn content-view [conn]
   (let [view (selected-view conn)]
-    (log/info "selected-view" view)
+;;     (log/info "selected-view" view)
     [flui/box
      :class "onyx-sim"
      :child
