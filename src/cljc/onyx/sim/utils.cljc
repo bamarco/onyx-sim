@@ -9,6 +9,9 @@
 ;;              [cljs.core.async.macros :refer [go]]
                             )))
 
+;;;
+;;; !!!: This is an experimental volatile file. Do not expect it to stay the same.
+;;;
 
 #?(:clj
 (defn edn-seq

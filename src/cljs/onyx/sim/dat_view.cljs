@@ -9,6 +9,10 @@
             [reagent.core :as r :refer [atom]]))
 
 ;;;
+;;; !!!: This experimental file is moving to dat.view itself. This file will be deleted in the near future.
+;;;
+
+;;;
 ;;; Predicates
 ;;;
 (defn ^:export represent? [event old-seg seg all-new represent]
@@ -386,21 +390,24 @@
      :flow/predicate :onyx.sim.core/always
      :flow/short-circuit? true}]})
 
-(defn simulator [{:as resources :keys [dat.sync.db/conn onyx.sim/sim]}]
-  (sim/make-sim
-    :name :dat.view/sim
-    :title "Dat View Simulator"
-    :description "This will simulate the compute graph for dat view."
-    :job (update-in
-           job
-           [:onyx.core/lifecycles]
-           (fn [lifecycles]
-             (for [lc lifecycles]
-               (with-meta lc resources))))
-    :transitions [{:event :onyx.sim.api/inputs
-                   :inputs {:dat.view/render
-                            [{:dat.view/route :dat.view.route/todos}
-                             {:dat.view/route :dat.view.route/index}]}}]))
+(defn make-sim
+  ([conn] (make-sim conn :dat.view/sim))
+  ([conn sim-name]
+   (sim/make-sim
+     :name sim-name
+     :title "Dat View Simulator"
+     :description "This will simulate the compute graph for dat view."
+     :job (update-in
+            job
+            [:onyx.core/lifecycles]
+            (fn [lifecycles]
+              (for [lc lifecycles]
+                (with-meta lc {:dat.sync.db/conn conn
+                               :onyx.sim/sim [:onyx/name sim-name]}))))
+     :transitions [{:event :onyx.sim.api/inputs
+                    :inputs {:dat.view/render
+                             [{:dat.view/route :dat.view.route/todos}
+                              {:dat.view/route :dat.view.route/index}]}}])))
 
 (def todos-query
   '[:find ?todo

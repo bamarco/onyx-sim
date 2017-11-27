@@ -14,7 +14,7 @@
 (def drain           onyx/drain)
 (def transition-env  onyx/transition-env)
 (def new-segment     onyx/new-segment)
-(def kw->fn          onyx.static.util/kw->fn)
+(def ^:private kw->fn          onyx.static.util/kw->fn)
 
 (defn new-inputs [env inputs]
   (reduce
@@ -26,14 +26,6 @@
         segments))
     env
     inputs))
-
-(defmethod onyx/transition-env ::inputs
-  [env {:keys [inputs]}]
-  (new-inputs env inputs))
-
-(defmethod onyx/transition-env ::init
-  [env {:keys [sim job]}]
-    (onyx/init job))
 
 (defn out
   "Returns outputs of onyx job presumably after draining."
@@ -70,6 +62,14 @@
                             :task output-task
                             :segment segment}))
 
+(defmethod onyx/transition-env ::inputs
+  [env {:keys [inputs]}]
+  (new-inputs env inputs))
+
+(defmethod onyx/transition-env ::init
+  [env {:keys [sim job]}]
+    (onyx/init job))
+
 (defmethod onyx/transition-env ::step
   [env _]
   (step env))
@@ -90,7 +90,9 @@
   [env {:keys [task segment]}]
   (onyx/new-segment env task segment))
 
-(defn onyx-feed-loop [env & selections]
+(defn- onyx-feed-loop
+  "EXPERIMENTAL"
+  [env & selections]
   ;; TODO: :in and :render need to be genericized
   (reduce
     (fn [env selection]

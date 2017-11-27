@@ -9,6 +9,8 @@
             ))
 
 (defn config []
+  ;; ???: use environ for log file.
+  ;; ???: move log config to our own wrap-with-logger middleware that allows for a log file configuration like figwheel does.
   (log/merge-config!
     {:appenders {:spit (appenders/spit-appender {:fname "log/server.log"})}})
   {:http-port  (Integer. (or (env :port) 10555))

@@ -7,6 +7,10 @@
             [onyx.static.util :refer [kw->fn]]
             [posh.reagent :as posh]))
 
+;;;
+;;; !!!: This experimental file is being refactored and will eventually be removed.
+;;;
+
 (defn compile-control [conn control-spec]
   ;; FIXME: controls are compiling more than once and are only reactive inasmuch as they depend on reactive posh data. As is it works and is merely an efficiency leak. This is a good spot to check for efficiency gains later on.
   (into

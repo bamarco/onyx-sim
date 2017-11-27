@@ -6,17 +6,7 @@
             [onyx.sim.core :as sim]))
 
 (defn show-ui [conn]
-  (let [debug true
-        sys {:dat.sync.db/conn conn
-             :onyx.sim/sim [:onyx/name :dat.view/sim]}]
-    (if debug
-      [sim/sim-selector conn]
-      [:div
-       [:p "Rendering /todo"]
-       [dat.view/render-segment
-        sys
-        {:dat.view/route :dat.view.route/todos}]
-        [sim/sim-selector conn]])))
+  [sim/sim-selector conn])
 
 (defrecord UIComponent [knowbase]
   component/Lifecycle

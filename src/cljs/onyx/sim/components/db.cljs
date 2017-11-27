@@ -3,7 +3,6 @@
             [taoensso.timbre :as log]
             [onyx.sim.core :as sim]
             [posh.reagent :as posh]
-            [onyx.sim.event :as event]
             [onyx.sim.dat-view :as dat.view]
             [datascript.core :as d]))
 
@@ -11,13 +10,14 @@
   (let [conn (d/create-conn sim/ds-schema)]
     (posh/posh! conn)
     (d/transact! conn sim/base-ui)
-    (event/sim! conn)
+    (sim/sim! conn)
+
     (d/transact! conn sim/examples)
-    (d/transact! conn [(dat.view/simulator
-                         {:onyx.sim/sim [:onyx/name :dat.view/sim]
-                          :dat.sync.db/conn conn})
+
+    (d/transact! conn [(dat.view/make-sim conn)
                        [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-sim [:onyx/name :dat.view/sim]]])
     (d/transact! conn (dat.view/example))
+
     conn))
 
 (defrecord KnowledgeBase [conn]
@@ -28,7 +28,7 @@
       (assoc component
         :conn conn)))
   (stop [component]
-    (event/unsim! conn)
+    (sim/unsim! conn)
     (assoc component
       :conn nil)))
 

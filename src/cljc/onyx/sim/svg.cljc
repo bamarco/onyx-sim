@@ -10,6 +10,10 @@
             #?(:clj  [clojure.core.match :refer [match]]
                :cljs [cljs.core.match :refer-macros [match]])))
 
+;;;
+;;; !!!: This is an experimental volatile file. Do not expect it to stay the same.
+;;;
+
 
 #?(:cljs (def sqrt (.-sqrt js/Math)))
 
