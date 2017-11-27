@@ -6,7 +6,7 @@ Try it out here: https://onyx-sim.herokuapp.com/
 
 Onyx simimulator is an interactive implementation of the [onyx local runtime](https://github.com/onyx-platform/onyx-local-rt).
 
-No maven deployment yet so git clone if you want to use it. It's in alpha, but moving to beta soon.
+Clojars [onyx-sim "0.1.0"].
 
 ## Dat View
 
