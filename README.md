@@ -6,7 +6,7 @@ Try it out here: https://onyx-sim.herokuapp.com/
 
 Onyx simimulator is an interactive implementation of the [onyx local runtime](https://github.com/onyx-platform/onyx-local-rt).
 
-Clojars [onyx-sim "0.1.0"].
+Clojars [onyx-sim "0.1.0"] https://clojars.org/onyx-sim.
 
 ## Dat View
 
