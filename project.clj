@@ -1,4 +1,4 @@
-(defproject onyx-sim "0.1.0"
+(defproject onyx-sim "0.1.1-SNAPSHOT"
   :description "A simulator for the onyx runtime."
   :url "https://github.com/bamarco/onyx-sim"
   :license {:name "Eclipse Public License"
