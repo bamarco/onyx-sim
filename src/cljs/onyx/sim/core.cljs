@@ -285,8 +285,9 @@
     :db/unique :db.unique/identity}
    {:db/ident :dat.view/route
     :db/unique :db.unique/identity}
+   ;; TODO: move to dat.view
    {:db/ident :dat.view.rep/layout
-    :db.type :db.type/ref
+    :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/many}
    {:db/ident :onyx.core/job
     :db/valueType :db.type/ref}
