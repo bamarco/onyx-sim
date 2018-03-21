@@ -12,7 +12,7 @@
   component/Lifecycle
   (start
     [component]
-      (reagent/render [show-ui (:conn knowbase)] (js/document.getElementById "app"))
+    (reagent/render [show-ui (:conn knowbase)] (js/document.getElementById "app"))
     component)
   (stop [component]
     component))

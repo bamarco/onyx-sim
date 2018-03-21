@@ -27,10 +27,10 @@
   (intent conn event inputs))
 
 (def transitions-query '[:find ?sim ?transitions
-                        :in $
-                        :where
-                        [?sim :onyx/type :onyx.sim/sim]
-                        [?sim :onyx.sim/transitions ?transitions]])
+                         :in $
+                         :where
+                         [?sim :onyx/type :onyx.sim/sim]
+                         [?sim :onyx.sim/transitions ?transitions]])
 
 (defn transitions-diff [transitions-before transitions-after]
   (let [[old-tss new-tss] (split-at (count transitions-before) transitions-after)]
@@ -167,7 +167,7 @@
 (defmethod intent
   ::simple-value
   [db event [value]]
-    [[:db.fn/call simple-value (assoc event :dat.view/value value)]])
+  [[:db.fn/call simple-value (assoc event :dat.view/value value)]])
 
 (defn hide-tasks [db {:keys [onyx.sim/sim onyx.sim/task-names]}]
   (let [sim (sim-or-selected db sim)]

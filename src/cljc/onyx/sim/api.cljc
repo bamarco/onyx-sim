@@ -1,10 +1,16 @@
 (ns onyx.sim.api
   (:require [taoensso.timbre :as log]
             [onyx-local-rt.api :as onyx]
+            [onyx-local-rt.impl :as i]
             [onyx.static.util]
-            [onyx.sim.utils #?@(:clj (:refer [xfn])
-                                     :cljs (:refer-macros [xfn]))]))
-
+            #?(:clj [onyx.plugin.protocols :as p])
+            [datascript.core :as d]
+            [clojure.spec.alpha :as s]
+            [clojure.core.async.impl.protocols :refer [WritePort ReadPort Channel]]
+            [clojure.core.async :as async :refer [go go-loop <! >!]]
+            [onyx.sim.utils #?@(:clj  (:refer [xfn])
+                                :cljs (:refer-macros [xfn]))]))
+            
 
 (defonce onyx-batch-size 20)
 
@@ -12,42 +18,39 @@
 (def init            onyx/init)
 (def tick            onyx/tick)
 (def drain           onyx/drain)
-(def transition-env  onyx/transition-env)
+; (def transition-env  onyx/transition-env)
 (def new-segment     onyx/new-segment)
 (def ^:private kw->fn          onyx.static.util/kw->fn)
 
-(defn new-inputs [env inputs]
+(defn new-inputs 
+  "Adds the {input-task segments} to the inbox of the given tasks"
+  [env inputs]
   (reduce
     (fn [env [task-name segments]]
-      (reduce
-        (fn [env segment]
-          (onyx/new-segment env task-name segment))
+      (update-in
         env
+        [:tasks task-name :inbox]
+        into
         segments))
     env
     inputs))
 
-(defn out
-  "Returns outputs of onyx job presumably after draining."
-  [env]
-  (into
-    {}
-    (comp
-      (filter (fn [[_ task]] (= (get-in task [:event :onyx.core/task-map :onyx/type]) :output)))
-      (xfn [[task-name task]]
-           [task-name (:outputs task)]))
-    (:tasks env)))
-
-(defn run
-  "Drains and stops an onyx environment with the given segments fed in."
-  [env in]
-  (-> (reduce (fn [env [task segment]]
-                 (onyx/new-segment env task segment)) env in)
-      (onyx/drain)
-      (onyx/stop)))
+(defn remove-outputs 
+  "Removes the {output-task segments} from the outputs of the given tasks"
+  [env outputs]
+  (reduce
+    (fn [env [task-name segments]]
+      (update-in
+        env
+        [:tasks task-name :outputs]
+        (fn [outbox]
+          ;; ???: actually check for equality rather than count? diff?
+          (into [] (drop (count segments)) outbox))))
+    env
+    outputs))
 
 (defn step
-  "Ticks until the start of the next task."
+  "Ticks for one full lifecycle."
   [env]
   (reduce
     (fn [env _]
@@ -57,46 +60,250 @@
     (onyx/tick env)
     (range 1000)))
 
-(defn remove-segment [env output-task segment]
-  (onyx/transition-env env {:event ::remove-segment
-                            :task output-task
-                            :segment segment}))
+(defn out
+  "Returns {output-task output-segments} of onyx env presumably after draining."
+  [env]
+  (into
+    {}
+    (comp
+      (filter 
+        (fn [[_ task]] 
+          (= (get-in task [:event :onyx.core/task-map :onyx/type]) :output)))
+      (map 
+        (fn [[task-name task]]
+          [task-name (:outputs task)])))
+    (:tasks env)))
 
-(defmethod onyx/transition-env ::inputs
-  [env {:keys [inputs]}]
-  (new-inputs env inputs))
+(defn- read-chan? [obj] 
+  (satisfies? ReadPort obj))
 
-(defmethod onyx/transition-env ::init
-  [env {:keys [sim job]}]
-    (onyx/init job))
+(defn- transfer-pending-writes-async [env]
+  (go-loop [env env
+            writes (:pending-writes env)]
+    (if (empty? writes)
+      (assoc env :pending-writes {})
+      (recur 
+        (let [[task-name segments] (next writes)
+              maybe-async-segs (first segments)
+              segments (if (read-chan? maybe-async-segs)
+                          (let [segs (<! maybe-async-segs)]
+                            (into
+                              (if (sequential? segs)
+                                segs
+                                (vector segs))
+                              (rest segments))) 
+                          segments)]
+          (update-in env [:tasks task-name :inbox] into segments))
+        (rest writes)))))
 
-(defmethod onyx/transition-env ::step
+
+(defn go-tick
+  "Asynchronously ticks the env."
+  ([env n]
+    ;; TODO: fix for async
+   (go-loop [env env
+             n n]
+     (if (= n 0)
+       env
+       (let [env (<! (go-tick env))]
+         (recur env (dec n))))))
+  ([env]
+   (go
+     (let [this-action (:next-action env)
+          ;  _ (log/info "action" this-action)
+           env (i/integrate-task-updates env this-action)
+          ;  _ (log/info "pending-writes" (:pending-writes env))
+           env (if (empty? (:pending-writes env))
+                  env
+                  (<! (transfer-pending-writes-async env)))
+          ;  _ (log/info "pending-writes" (:pending-writes env))
+           env (i/transition-action-sequence env this-action)]
+          ;  _ (log/info "next-action" (:next-action env))]
+       env))))
+
+(defn go-drain 
+  "Asynchronously drains the env"
+  [env & {:as opts :keys [max-ticks] :or {max-ticks 10000}}]
+  ;; TODO: max-ticks
+  (go-loop [env env]
+    ; (log/info "go-loop :inbox " (get-in env [:tasks :in :inbox]))
+    (if (onyx/drained? env)
+      env
+      (let [chan (go-tick env)]
+        (recur (<! chan))))))
+
+(defn poll-plugins! [env])
+  ;; TODO: return {input-task segments} after polling all input plugins
+
+(defn offer-plugins! [env])
+  ;; TODO: return {output-task segments} that were taken by all output plugins
+
+(defmulti transition-env 
+  (fn [env action-data]
+    (::event action-data)))
+
+(defmethod transition-env ::init
+  [_ {::keys [job]}]
+  (init job))
+
+(defmethod transition-env ::tick
+  [env {::keys [times]}]
+  (if times
+    (tick env times)
+    (tick env)))
+
+(defmethod transition-env ::go-tick
+  [env {::keys [times]}]
+  (if times
+    (go-tick env times)
+    (go-tick env)))
+
+(defmethod transition-env ::step
   [env _]
   (step env))
 
-(defmethod onyx/transition-env ::tick
+(defmethod transition-env ::drain
   [env _]
-  (onyx/tick env))
+  (drain env))
+  
+(defmethod transition-env ::inputs
+  [env {::keys [inputs]}]
+  (new-inputs env inputs))
 
-(defmethod onyx/transition-env ::drain
+(defmethod transition-env ::poll!
   [env _]
-  (onyx/drain env))
+  (new-inputs env
+    (poll-plugins! env)))
 
-(defmethod onyx/transition-env ::remove-segment
-  [env {:keys [task segment]}]
-  (update-in env [:tasks task :outputs] (partial into [] (remove #(= segment %)))))
+(defmethod transition-env ::offer!
+  [env action]
+  (remove-outputs env
+    (offer-plugins! env)))
 
-(defmethod onyx/transition-env ::new-segment
-  [env {:keys [task segment]}]
-  (onyx/new-segment env task segment))
+; (defn into-meta [obj m]
+;   (vary-meta
+;    obj
+;    #(into
+;      (or % {})
+;      m)))
 
-(defn- onyx-feed-loop
-  "EXPERIMENTAL"
-  [env & selections]
-  ;; TODO: :in and :render need to be genericized
-  (reduce
-    (fn [env selection]
-      (-> (onyx/new-segment env :in selection)
-          (remove-segment :render selection)))
-    env
-    selections))
+; (defn inject-lifecycle-resources [job resources]
+;   (update-in
+;    job
+;    [:onyx.core/lifecycles]
+;    (fn [lifecycles]
+;      (for [lc lifecycles]
+;        (into-meta lc resources)))))
+
+; (defn plugin? 
+;   "Is this task a plugin?"
+;   [task]
+;   (contains? task :onyx/plugin))
+
+; (defn input-task? 
+;   "Is this task an input-task?"
+;   [task]
+;   (= (:onyx/type task) :input))
+
+; (defn output-task?
+;   "Is this task an output-task?"
+;   [task]
+;   (= (:onyx/type task) :output))
+
+; (s/def ::input-plugin  #(and (plugin? %) (input-task? %)))
+; (s/def ::output-plugin #(and (plugin? %) (output-task? %)))
+
+(defn simple-submit-job
+  "Initializes the job and drains the job asynchronously."
+  [job inputs & opts]
+  (let [env (-> (init job)
+                (new-inputs inputs))]
+    (apply go-drain env opts)))
+
+;;;
+;;; !!!: New Hotness!
+;;;
+; (defn chan-poll-batch!
+;   "Plugins that implement the Onyx Input poll! protocol can call this function to poll a batch of segments"
+;   [chan batch-size]
+;   (loop [segs []]
+;     (if-not (< (count segs) batch-size) segs
+;       (if-let [seg (async/poll! chan)]
+;         (recur (conj segs seg))
+;         segs))))
+
+; #?
+; (:clj
+;   (defn poll-env!
+;     "Reads a batch of segments for every input plugin for the given onyx env and creates a ::batch transition."
+;     [env & {:as opts :keys [timeout]}]
+;     {::event   ::inputs
+;       ::onyx-id (::tenancy-id env)
+;       ::inputs 
+;       (into {})
+;       (for [[task-name {:as task :keys [pipeline event]}] (filter (fn [[_ task]] (input-task? task)) (:tasks env))]
+;         (let [batch (p/poll! pipeline event timeout)]
+;           [task-name batch]))}))
+
+; #?
+; (:clj
+;   (defn flush-env! 
+;     "Writes a batch of segments for every output plugin for the given output env and creates a ::flush transition"
+;     [env]
+;     (let [replica   nil
+;           messenger nil]
+;       {::event   ::flush}
+;       ::onyx-id (::tenancy-id env)
+;       ::remove
+;       (into {}
+;         (for [[task-name {:as task :keys [pipeline event outbox]}] (filter (fn [[_ task]] (output-task? task)) (:tasks env))]
+;           ;; TODO: handle prepare-batch and write-batch delays
+;           (do
+;             (p/prepare-batch pipeline event replica messenger)
+;             (p/write-batch pipeline event replica messenger)
+;             [task-name outbox]))))))
+
+; #?
+; (:cljs 
+;   (defn active-envs [{:as simulator :keys [conn envs]}]
+;       (let [active-ids (d/q) 
+;                       '[:find ?tenancy-id .
+;                         :where
+;                         [?job ::active?    true]
+;                         [?job ::tenancy-id ?tenancy-id]]
+;                       @conn])
+;       (select-keys @envs active-ids)))
+
+; #?
+; (:cljs
+;   (defn go!
+;     "Starts a go-loop that will loop through all the envs in an onyx simulator. Polling the input plugins for a batch of segments, draining the envs, and writing the batch of output segments to the output plugins"
+;     [{:as simulator :keys [conn]} & opts]
+;     ;; ???: add throttling when no segments are in flight? might churn cpu or maybe core.async has it covered
+;     (go-loop []
+;       (let [actives (active-envs simulator)]
+;         (doseq [env actives]
+;           (let [batch (apply poll-env! env opts)]
+;             (d/transact! conn batch)))
+;         (doseq [env actives]
+;           (let [env (<! (apply go-drain env opts))
+;                 batch (apply flush-env! env opts)]
+;             (d/transact! conn batch))))  
+;       (recur))))
+
+;; ???: side-effect functions return events rather than voids? why not just use transactor model?
+
+; (defn submit-job! 
+;   "Transacts a job into the simulator."
+;   [{:as sim :keys [conn]} job]
+;   (let [job-id   (or (:job-id job)) ;(gen-uuid))
+;         job-hash (hash job)
+;         tenancy-id (or (:tenancy-id job) job-hash)]
+;     (d/transact! 
+;       conn
+;       ;; ???: which of this identifiers are neccessary: tenancy-id, job-id, job-hash?
+;       {::event      :onyx.sim.api/init
+;        ::tenancy-id tenancy-id
+;        ::job-id     job-id
+;        ::job-hash   job-hash
+;        ::job        job})))

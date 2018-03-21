@@ -7,7 +7,7 @@
   :dependencies [[org.clojure/clojure "1.9.0-alpha16"]
                  [org.clojure/clojurescript "1.9.542"]
                  [org.clojure/tools.reader "1.0.0-beta3"]
-                 [org.clojure/core.async "0.3.442"]
+                 [org.clojure/core.async "0.4.474"]
                  [clojure-future-spec "1.9.0-alpha17"]
 
                  [org.clojure/math.numeric-tower "0.0.4"]
@@ -76,6 +76,7 @@
                 :source-paths ["src/cljs" "test/cljs" "src/cljc" "test/cljc"]
                 :compiler {:output-to "resources/public/js/compiled/testable.js"
                            :main onyx.sim.test-runner
+;;                            :target :nodejs
                            :optimizations :none}}
 
                {:id "min"
@@ -115,19 +116,20 @@
 
              :server-logfile "log/figwheel.log"}
 
-  :doo {:build "test"}
+  :doo {:build "test"
+        :alias {:default [:chrome-headless]}}
 
   :profiles {:dev
              {:dependencies [[figwheel "0.5.11"]
                              [figwheel-sidecar "0.5.11"]
                              [com.cemerick/piggieback "0.2.2"]
                              [org.clojure/tools.nrepl "0.2.13"]
-;;                              [lein-doo "0.1.7"]
+;;                              [lein-doo "0.1.8"]
                              [reloaded.repl "0.2.3"]]
 
               :plugins [[lein-figwheel "0.5.11"]
-;;                         [lein-doo "0.1.7"]
-                        ]
+                        [lein-doo "0.1.8"]]
+                        
 
               :source-paths ["dev"]
               :repl-options {:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}}

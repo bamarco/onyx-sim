@@ -1,9 +1,9 @@
 (ns onyx.sim.system
   (:require [com.stuartsierra.component :as component]
             [onyx.sim.components.ui :refer [new-ui-component]]
-            [onyx.sim.components.db :refer [new-knowledge-base]]
+            [onyx.sim.components.db :refer [new-knowledge-base]]))
 ;;             [nightlight.repl-server]
-            ))
+            
 
 (declare ^:export system)
 
