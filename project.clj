@@ -11,6 +11,7 @@
                  [clojure-future-spec "1.9.0-alpha17"]
 
                  [org.clojure/math.numeric-tower "0.0.4"]
+                 [primitive-math "0.1.6"]
 ;;                  [com.andrewmcveigh/cljs-time "0.5.2"]
 
                  [datascript "0.16.2"]
@@ -32,7 +33,7 @@
 ;;                  [hiccup "1.0.5"]
                  [com.taoensso/timbre "4.8.0"]
                  [org.onyxplatform/onyx-spec "0.11.0.2"]
-                 [org.onyxplatform/onyx-local-rt "0.11.0.0-alpha5"]]
+                 [org.onyxplatform/onyx-local-rt "0.12.7.0"]]
 
 
   :plugins [[lein-cljsbuild "1.1.6"]

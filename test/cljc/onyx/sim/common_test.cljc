@@ -1,6 +1,8 @@
 (ns onyx.sim.common-test
   (:require 
     [onyx.sim.api :as onyx]
+    [onyx.plugin.seq]
+    [onyx.plugin.protocols :as p]
     [clojure.core.async :as async :refer [go go-loop <! >! #?@(:clj [<!! >!!])]]
     [clojure.test :as test :refer [is deftest are testing]]))
 
@@ -283,6 +285,7 @@
               :onyx/batch-size batch-size}
              {:onyx/name       ::identity
               :onyx/fn         ::seg-identity
+              :onyx/type       :function
               :onyx/batch-size batch-size}
              {:onyx/name       :out
               :onyx/type       :output
@@ -295,6 +298,7 @@
               :onyx/batch-size batch-size}
              {:onyx/name       ::identity
               :onyx/fn         ::seg-identity-async
+              :onyx/type       :function
               :onyx/batch-size batch-size}
              {:onyx/name       :out
               :onyx/type       :output
@@ -324,12 +328,16 @@
       (test-within 1000
         (go 
           (let [env (<! env-chan)]
-            (is (get-in env [:tasks :out :outputs]) [{:hello 1}])))))
+            (is 
+              (get-in env [:tasks :out :outputs])
+              [{:hello 1}])))))
     (test-async
       (test-within 1000
         (go 
           (let [env (<! async-env-chan)]
-            (is (get-in env [:tasks :out :outputs]) [{:hello 1}])))))))
+            (is 
+              (get-in env [:tasks :out :outputs]
+                [{:hello 1}]))))))))
 
 
 (deftest test-go-tick
@@ -340,7 +348,27 @@
       (test-within 1000
         (go
           (let [env (<! env-chan)]
-            (is (get-in env [:tasks :out :outputs]) [{:hello 1}])))))))
+            (is 
+              (get-in env [:tasks :out :outputs])
+              [{:hello 1}])))))))
+
+(def a-seq-plugin
+  {:seq/seq [{:hello 1}]
+   :onyx/type :input
+   :onyx/plugin :onyx.plugin.seq
+   :onyx/batch-size batch-size
+   :onyx/name :in})
+
+(deftest test-poll
+  (let [pipeline (onyx.plugin.seq/input a-seq-plugin)
+        event (:event pipeline)
+        timeout 1000
+        _ (p/recover! pipeline nil nil)
+        chunk (p/poll! pipeline event timeout)]
+    (prn "chunk" chunk)
+    (is 
+      chunk
+      [{:hello 1}])))
 
 ; (deftest test-async-job
 ;   (let [chan (onyx/submit-job-naive job 8000)]
