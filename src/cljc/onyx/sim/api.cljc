@@ -143,7 +143,7 @@
     (if (empty? writes)
       (assoc env :pending-writes {})
       (recur 
-        (let [[task-name segments] (next writes)
+        (let [[task-name segments] (first writes)
               maybe-async-segs (first segments)
               segments (if (read-chan? maybe-async-segs)
                           (let [segs (<! maybe-async-segs)]
@@ -170,28 +170,28 @@
   ([env]
    (go
      (let [this-action (:next-action env)
-          ;  _ (log/info "action" this-action)
+           _ (log/info "action" this-action)
            env (i/integrate-task-updates env this-action)
-          ;  _ (log/info "pending-writes" (:pending-writes env))
+           _ (log/info "pending-writes" (:pending-writes env))
            env (if (empty? (:pending-writes env))
                   env
                   (<! (transfer-pending-writes-async env)))
-          ;  _ (log/info "pending-writes" (:pending-writes env))
-           env (i/transition-action-sequence env this-action)]
-          ;  _ (log/info "next-action" (:next-action env))]
-       env))))
+           _ (log/info "pending-writes" (:pending-writes env))
+           env (i/transition-action-sequence env this-action)
+           _ (log/info "next-action" (:next-action env))]
+        env))))
 
 (defn go-drain 
   "Asynchronously drains the env"
   [env & {:as opts :keys [max-ticks] :or {max-ticks 10000}}]
   ;; TODO: max-ticks
   (go-loop [env env]
-    ; (log/info "go-loop :inbox/outbox " (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
+    (log/info "go-loop :inbox/outbox " (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
     (if (onyx/drained? env)
       env
       (let [chan (go-tick env)
             env (<! chan)]
-        ; (prn "tick" (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
+        (prn "tick" (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
         (recur env)))))
 
 (defn poll-plugins! [env])
