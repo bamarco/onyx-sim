@@ -155,7 +155,6 @@
       (test-within 1000
         (go
           (let [env (<! env-chan)]
-            ; (prn "test-go-tick" env)
             (is
               (=
                 (get-in env [:tasks :out :outputs])
