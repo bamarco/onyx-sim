@@ -32,8 +32,8 @@
                  [posh "0.5.5"]
 ;;                  [hiccup "1.0.5"]
                  [com.taoensso/timbre "4.8.0"]
-                 [org.onyxplatform/onyx-spec "0.11.0.2"]
-                 [org.onyxplatform/onyx-local-rt "0.12.7.0"]]
+                ;  [org.onyxplatform/onyx-spec "0.12.7.1-SNAPSHOT"]
+                 [org.onyxplatform/onyx-local-rt "0.12.7.1-SNAPSHOT"]]
 
 
   :plugins [[lein-cljsbuild "1.1.6"]

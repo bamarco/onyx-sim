@@ -2,8 +2,8 @@
   (:require [taoensso.timbre :as log]
             [onyx-local-rt.api :as onyx]
             [onyx-local-rt.impl :as i]
-            [onyx.static.util]
-            #?(:clj [onyx.plugin.protocols :as p])
+            [onyx.static.util :refer [kw->fn]]
+            [onyx.plugin.protocols :as p]
             [datascript.core :as d]
             [clojure.spec.alpha :as s]
             [clojure.core.async.impl.protocols :refer [WritePort ReadPort Channel]]
@@ -15,13 +15,73 @@
 (defonce onyx-batch-size 20)
 
 (def env-summary     onyx/env-summary)
-(def init            onyx/init)
 (def tick            onyx/tick)
 (def drain           onyx/drain)
 ; (def transition-env  onyx/transition-env)
 (def new-segment     onyx/new-segment)
-(def ^:private kw->fn          onyx.static.util/kw->fn)
 
+;;
+;; Init
+;;
+(defn- plugin? [task-state]
+  (get-in task-state [:event :onyx.core/task-map :onyx/plugin]))
+
+(defn- input-plugin? [task-state]
+  (and 
+    (plugin? task-state)
+    (= :input (get-in task-state [:event :onyx.core/task-map :onyx/type]))))
+
+(defn- output-plugin? [task-state]
+  (and
+    (plugin? task-state)
+    (= :output (get-in task-state [:event :onyx.core/task-map :onyx/type]))))
+
+(defn- init-plugin [task-state]
+  (let [task (get-in task-state [:event :onyx.core/task-map])
+        ns-name (str (name (:onyx/plugin task)))
+        init-name (cond 
+                    (= :input (:onyx/type task))
+                    "input"
+                    
+                    (= :output (:onyx/type task))
+                    "output")
+        init (kw->fn (keyword ns-name init-name))]
+    (assoc
+      task-state
+      :pipeline
+      (init task))))
+
+(defn- task-state><init []
+  (map 
+    (fn [[task-name task-state]]
+      [task-name (if (plugin? task-state)
+                    (init-plugin task-state)
+                    task-state)])))
+
+(defn- init-plugins [env]
+  (update-in
+    env
+    [:tasks]
+    #(into {} (task-state><init) %)))
+
+(defn- recover-plugins! [env]
+  (doseq [[task-name task] 
+          (filter 
+            (fn [[_ task]]
+              (plugin? task))
+            (:tasks env))]
+    (p/recover! (:pipeline task) nil nil)))
+
+(defn init [job]
+  (let [env (-> job
+              (onyx/init)
+              (init-plugins))]
+    (recover-plugins! env)
+    env))
+
+;;
+;; segments
+;;
 (defn new-inputs 
   "Adds the {input-task segments} to the inbox of the given tasks"
   [env inputs]
@@ -126,11 +186,13 @@
   [env & {:as opts :keys [max-ticks] :or {max-ticks 10000}}]
   ;; TODO: max-ticks
   (go-loop [env env]
-    ; (log/info "go-loop :inbox " (get-in env [:tasks :in :inbox]))
+    ; (log/info "go-loop :inbox/outbox " (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
     (if (onyx/drained? env)
       env
-      (let [chan (go-tick env)]
-        (recur (<! chan))))))
+      (let [chan (go-tick env)
+            env (<! chan)]
+        ; (prn "tick" (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
+        (recur env)))))
 
 (defn poll-plugins! [env])
   ;; TODO: return {input-task segments} after polling all input plugins
@@ -194,24 +256,6 @@
 ;    (fn [lifecycles]
 ;      (for [lc lifecycles]
 ;        (into-meta lc resources)))))
-
-; (defn plugin? 
-;   "Is this task a plugin?"
-;   [task]
-;   (contains? task :onyx/plugin))
-
-; (defn input-task? 
-;   "Is this task an input-task?"
-;   [task]
-;   (= (:onyx/type task) :input))
-
-; (defn output-task?
-;   "Is this task an output-task?"
-;   [task]
-;   (= (:onyx/type task) :output))
-
-; (s/def ::input-plugin  #(and (plugin? %) (input-task? %)))
-; (s/def ::output-plugin #(and (plugin? %) (output-task? %)))
 
 (defn simple-submit-job
   "Initializes the job and drains the job asynchronously."
