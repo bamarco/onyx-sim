@@ -86,15 +86,15 @@
    [{:seq/seq [{:hello 1} {:hello 2} {:hello 3}]
      :onyx/type :input
      :onyx/plugin :onyx.plugin.seq
-     :onyx/batch-size 1
+     :onyx/batch-size 2
      :onyx/name :in}
     {:onyx/name       ::identity
      :onyx/fn         ::seg-identity-async
      :onyx/type       :function
-     :onyx/batch-size 1}
+     :onyx/batch-size 2}
     {:onyx/name       :out
      :onyx/type       :output
-     :onyx/batch-size 1}]
+     :onyx/batch-size 2}]
 
    :workflow
    [[:in ::identity] [::identity :out]]})
@@ -180,26 +180,22 @@
         env-chan (onyx/go-drain env)
         batch-env-chan (-> batched-plugin-job
                          (onyx/init)
+                         (onyx/transition-env {:onyx.sim.api/event :onyx.sim.api/poll!})
                          (onyx/go-drain))]
     (test-async
       (test-within 1000
         (go
           (let [env (<! env-chan)]
-                ; polls (onyx/poll-plugins! env)]
-            ; (is 
-            ;   (=
-            ;     polls
-            ;     {:in [{:hello 1} {:hello 2} {:hello 3}]}))
             (is
               (= 
                 (get-in env [:tasks :out :outputs])
-                [{:hello 1} {:hello 2} {:hello 3}]))))))))
-    ; (test-async
-    ;   (test-within 1000
-    ;     (go
-    ;       (let [env (<! batch-env-chan)]
-    ;         (is
-    ;           (=
-    ;             (get-in env [:tasks :out :outputs])
-    ;             [{:hello 1} {:bullshit true}]))))))))
+                [{:hello 1} {:hello 2} {:hello 3}]))))))
+    (test-async
+      (test-within 1000
+        (go
+          (let [env (<! batch-env-chan)]
+            (is
+              (=
+                (get-in env [:tasks :out :outputs])
+                [{:hello 1} {:hello 2}]))))))))
 

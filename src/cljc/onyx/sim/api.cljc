@@ -162,7 +162,7 @@
           (recur (conj buf v) t))))))
 
 (defn- go-collect
-  "collect a vector of promise-chans"
+  "collect a vector of promise-chans into a single chan, preserving order"
   [in-chans]
   (go-loop [ins in-chans
             segs []]
@@ -174,7 +174,9 @@
                   seg-or-chan)]
         (recur (rest ins) (conj segs seg))))))
 
-(defn- go-transfer-pending-writes [env]
+(defn- go-transfer-pending-writes 
+  "Asynchronously collects segments from :pending-writes"
+  [env]
   (go-loop [env env
             writes (:pending-writes env)]
     (if (empty? writes)
@@ -198,9 +200,9 @@
   ([env]
    (go
      (let [this-action (:next-action env)
-           _ (log/info "action" this-action)
+          ;  _ (log/info "action" this-action)
            env (i/integrate-task-updates env this-action)
-           _ (log/info "pending-writes" (:pending-writes env))
+          ;  _ (log/info "pending-writes" (:pending-writes env))
            env (if (empty? (:pending-writes env))
                   env
                   (<! (go-transfer-pending-writes env)))
@@ -213,20 +215,33 @@
   "Asynchronously drains the env"
   [env & {:as opts :keys [max-ticks] :or {max-ticks 10000}}]
   ;; TODO: max-ticks
-  (go-loop [env env]
-    (log/info "go-loop :inbox/outbox " (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
-    (if (onyx/drained? env)
+  (go-loop [env env
+            ticks-left max-ticks]
+    ; (log/info "go-loop :inbox/outbox " (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
+    (cond
+      (onyx/drained? env)
       env
+
+      (= ticks-left 0)
+      (throw 
+        (ex-info
+          (str "Ticked " max-ticks " times and never drained, runtime will not proceed with further execution.")
+          {}))
+
+      :else
       (let [chan (go-tick env)
             env (<! chan)]
-        (recur env)))))
+        (recur env (dec ticks-left))))))
 
-(defn- batch! [pipeline event timeout]
-  ;; TODO: batched
-  (loop [segs []]
-    (if-let [seg (p/poll! pipeline event timeout)]
-      (recur (conj segs seg))
-      segs)))
+(defn- batch! [task-state timeout]
+  (loop [segs []
+         batch-left (get-in task-state [:event :onyx.core/task-map :onyx/batch-size])]
+    ; (log/info "batch-left" batch-left)
+    (if (= batch-left 0)
+      segs
+      (if-let [seg (p/poll! (:pipeline task-state) (:event task-state) timeout)]
+        (recur (conj segs seg) (dec batch-left))
+        segs))))
 
 (defn poll-plugins! [env & {:as opts :keys [timeout] :or {timeout 1000}}]
   (into
@@ -238,7 +253,7 @@
       (map
         (fn [[task-name task-state]]
           [task-name
-           (batch! (:pipeline task-state) (:event task-state) timeout)]))) 
+           (batch! task-state timeout)]))) 
     (:tasks env)))
 
 (defn offer-plugins! [env])
