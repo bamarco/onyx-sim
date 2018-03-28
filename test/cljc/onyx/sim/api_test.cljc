@@ -124,11 +124,11 @@
 (deftest test-go-drain
   (let [env-chan (-> identity-job
                     (onyx/init)
-                    (onyx/new-inputs {:in [{:hello 1}]})
+                    (onyx/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]})
                     (onyx/go-drain))
         async-env-chan (-> identity-async-job
                           (onyx/init)
-                          (onyx/new-inputs {:in [{:hello 1}]})
+                          (onyx/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]})
                           (onyx/go-drain))]
     (test-async
       (test-within 1000
@@ -137,7 +137,7 @@
             (is 
               (=
                 (get-in env [:tasks :out :outputs])
-                [{:hello 1}]))))))
+                [{:hello 1} {:hello 2} {:hello 3}]))))))
     (test-async
       (test-within 1000
         (go 
@@ -145,11 +145,11 @@
             (is
               (=
                 (get-in env [:tasks :out :outputs])
-                [{:hello 1}]))))))))
+                [{:hello 1} {:hello 2} {:hello 3}]))))))))
 
 (deftest test-go-tick
   (let [env-chan (-> (onyx/init identity-async-job)
-                     (onyx/new-inputs {:in [{:hello 1}]})
+                     (onyx/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]})
                      (onyx/go-tick 500))]
     (test-async
       (test-within 1000
@@ -158,7 +158,7 @@
             (is
               (=
                 (get-in env [:tasks :out :outputs])
-                [{:hello 1}]))))))))
+                [{:hello 1} {:hello 2} {:hello 3}]))))))))
 
 (deftest test-poll
   (let [pipeline (onyx.plugin.seq/input a-seq-plugin)
@@ -171,9 +171,13 @@
       [{:hello 1}])))
 
 (deftest test-poll-job
-  (let [env-chan (-> a-plugin-job
-                   (onyx/init)
-                   (onyx/go-drain))
+  (let [env (-> a-plugin-job
+              (onyx/init)
+              (onyx/transition-env {:onyx.sim.api/event :onyx.sim.api/poll!}))
+        _ (is (= 
+                (get-in env [:tasks :in :inbox]) 
+                [{:hello 1} {:hello 2} {:hello 3}]))
+        env-chan (onyx/go-drain env)
         batch-env-chan (-> batched-plugin-job
                          (onyx/init)
                          (onyx/go-drain))]
@@ -181,16 +185,21 @@
       (test-within 1000
         (go
           (let [env (<! env-chan)]
+                ; polls (onyx/poll-plugins! env)]
+            ; (is 
+            ;   (=
+            ;     polls
+            ;     {:in [{:hello 1} {:hello 2} {:hello 3}]}))
             (is
               (= 
                 (get-in env [:tasks :out :outputs])
-                [{:hello 1} {:hello 2} {:hello 3}]))))))
-    (test-async
-      (test-within 1000
-        (go
-          (let [env (<! batch-env-chan)]
-            (is
-              (=
-                (get-in env [:tasks :out :outputs])
-                [{:hello 1} {:bullshit true}]))))))))
+                [{:hello 1} {:hello 2} {:hello 3}]))))))))
+    ; (test-async
+    ;   (test-within 1000
+    ;     (go
+    ;       (let [env (<! batch-env-chan)]
+    ;         (is
+    ;           (=
+    ;             (get-in env [:tasks :out :outputs])
+    ;             [{:hello 1} {:bullshit true}]))))))))
 

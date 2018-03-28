@@ -137,25 +137,53 @@
 (defn- read-chan? [obj] 
   (satisfies? ReadPort obj))
 
-(defn- transfer-pending-writes-async [env]
+(defn- go-batch 
+  "from https://stackoverflow.com/questions/33620388/how-to-properly-batch-messages-with-core-async"
+  [in out max-time max-count]
+  (let [lim-1 (dec max-count)]
+    (async/go-loop [buf [] t (async/timeout max-time)]
+      (let [[v p] (async/alts! [in t])]
+        (cond
+          (= p t)
+          (do
+            (async/>! out buf)
+            (recur [] (async/timeout max-time)))
+
+          (nil? v)
+          (if (seq buf)
+            (async/>! out buf))
+
+          (== (count buf) lim-1)
+          (do
+            (async/>! out (conj buf v))
+            (recur [] (async/timeout max-time)))
+
+          :else
+          (recur (conj buf v) t))))))
+
+(defn- go-collect
+  "collect a vector of promise-chans"
+  [in-chans]
+  (go-loop [ins in-chans
+            segs []]
+    (if (empty? ins)
+      segs
+      (let [seg-or-chan (first ins)
+            seg (if (read-chan? seg-or-chan)
+                  (<! seg-or-chan)
+                  seg-or-chan)]
+        (recur (rest ins) (conj segs seg))))))
+
+(defn- go-transfer-pending-writes [env]
   (go-loop [env env
             writes (:pending-writes env)]
     (if (empty? writes)
       (assoc env :pending-writes {})
       (recur 
         (let [[task-name segments] (first writes)
-              maybe-async-segs (first segments)
-              segments (if (read-chan? maybe-async-segs)
-                          (let [segs (<! maybe-async-segs)]
-                            (into
-                              (if (sequential? segs)
-                                segs
-                                (vector segs))
-                              (rest segments))) 
-                          segments)]
+              segments (<! (go-collect segments))]
           (update-in env [:tasks task-name :inbox] into segments))
         (rest writes)))))
-
 
 (defn go-tick
   "Asynchronously ticks the env."
@@ -170,12 +198,12 @@
   ([env]
    (go
      (let [this-action (:next-action env)
-          ;  _ (log/info "action" this-action)
+           _ (log/info "action" this-action)
            env (i/integrate-task-updates env this-action)
-          ;  _ (log/info "pending-writes" (:pending-writes env))
+           _ (log/info "pending-writes" (:pending-writes env))
            env (if (empty? (:pending-writes env))
                   env
-                  (<! (transfer-pending-writes-async env)))
+                  (<! (go-transfer-pending-writes env)))
           ;  _ (log/info "pending-writes" (:pending-writes env))
            env (i/transition-action-sequence env this-action)]
           ;  _ (log/info "next-action" (:next-action env))]
@@ -186,15 +214,32 @@
   [env & {:as opts :keys [max-ticks] :or {max-ticks 10000}}]
   ;; TODO: max-ticks
   (go-loop [env env]
-    ; (log/info "go-loop :inbox/outbox " (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
+    (log/info "go-loop :inbox/outbox " (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
     (if (onyx/drained? env)
       env
       (let [chan (go-tick env)
             env (<! chan)]
         (recur env)))))
 
-(defn poll-plugins! [env])
-  ;; TODO: return {input-task segments} after polling all input plugins
+(defn- batch! [pipeline event timeout]
+  ;; TODO: batched
+  (loop [segs []]
+    (if-let [seg (p/poll! pipeline event timeout)]
+      (recur (conj segs seg))
+      segs)))
+
+(defn poll-plugins! [env & {:as opts :keys [timeout] :or {timeout 1000}}]
+  (into
+    {}
+    (comp
+      (filter
+        (fn [[_ task-state]]
+          (input-plugin? task-state)))
+      (map
+        (fn [[task-name task-state]]
+          [task-name
+           (batch! (:pipeline task-state) (:event task-state) timeout)]))) 
+    (:tasks env)))
 
 (defn offer-plugins! [env])
   ;; TODO: return {output-task segments} that were taken by all output plugins
