@@ -4,42 +4,27 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
-  :dependencies [[org.clojure/clojure "1.9.0-alpha16"]
-                 [org.clojure/clojurescript "1.9.542"]
-                 [org.clojure/tools.reader "1.0.0-beta3"]
+  :dependencies [[org.clojure/clojure "1.10.0-alpha4"]
+                 [org.clojure/clojurescript "1.10.238"]
                  [org.clojure/core.async "0.4.474"]
-                 [clojure-future-spec "1.9.0-alpha17"]
-
-                 [org.clojure/math.numeric-tower "0.0.4"]
-                 [primitive-math "0.1.6"]
-;;                  [com.andrewmcveigh/cljs-time "0.5.2"]
-
-                 [datascript "0.16.2"]
-                 [re-com "0.9.0"]
+                 [datascript "0.16.4"]
+                 [re-com "2.1.0"]
                  [com.cognitect/transit-clj "0.8.300"]
-                 [cljs-http "0.1.42"]
-                 [ring "1.6.2"]
+                 [cljs-http "0.1.44"]
+                 [ring "1.6.3"]
                  [ring/ring-defaults "0.3.1"]
-                 [bk/ring-gzip "0.2.1"]
-;;                  [radicalzephyr/ring.middleware.logger "0.6.0"]
+                 [bk/ring-gzip "0.3.0"]
                  [ring-logger-timbre "0.7.6"]
                  [compojure "1.6.0"]
                  [environ "1.1.0"]
                  [com.stuartsierra/component "0.3.2"]
                  [org.danielsz/system "0.4.1"]
-                 [org.clojure/tools.namespace "0.2.11"]
-                 [reagent "0.6.0"]
+                 [reagent "0.7.0"]
                  [posh "0.5.5"]
-;;                  [hiccup "1.0.5"]
-                 [com.taoensso/timbre "4.8.0"]
-                ;  [org.onyxplatform/onyx-spec "0.12.7.1-SNAPSHOT"]
+                 [com.taoensso/timbre "4.10.0"]
+                 [org.onyxplatform/onyx-spec "0.12.7.1-SNAPSHOT"]
+                 [org.onyxplatform/onyx "0.12.7"]
                  [org.onyxplatform/onyx-local-rt "0.12.7.1-SNAPSHOT"]]
-
-
-  :plugins [[lein-cljsbuild "1.1.6"]
-            [lein-environ "1.1.0"]]
-;;             [nightlight/lein-nightlight "1.7.2"]
-
 
   :min-lein-version "2.6.1"
 
@@ -50,6 +35,9 @@
   :clean-targets ^{:protect false} [:target-path :compile-path "resources/public/js"]
 
   :uberjar-name "onyx-sim.jar"
+
+  :plugins [[lein-cljsbuild "1.1.6"]
+            [lein-environ "1.1.0"]]
 
   ;; Use `lein run` if you just want to start a HTTP server, without figwheel
   :main onyx.sim.application
@@ -75,9 +63,9 @@
 
                {:id "test"
                 :source-paths ["src/cljs" "test/cljs" "src/cljc" "test/cljc"]
-                :compiler {:output-to "resources/public/js/compiled/testable.js"
+                :compiler {:output-to "resources/public/js/compiled_test/onyx_sim_test.js"
+                           :output-dir "resources/public/js/compiled_test/out"
                            :main onyx.sim.test-runner
-;;                            :target :nodejs
                            :optimizations :none}}
 
                {:id "min"
@@ -121,15 +109,15 @@
         :alias {:default [:chrome-headless]}}
 
   :profiles {:dev
-             {:dependencies [[figwheel "0.5.11"]
-                             [figwheel-sidecar "0.5.11"]
+             {:dependencies [[figwheel "0.5.15"]
+                             [figwheel-sidecar "0.5.15"]
                              [com.cemerick/piggieback "0.2.2"]
                              [org.clojure/tools.nrepl "0.2.13"]
-;;                              [lein-doo "0.1.8"]
                              [reloaded.repl "0.2.3"]]
 
-              :plugins [[lein-figwheel "0.5.11"]
-                        [lein-doo "0.1.8"]]
+              :plugins [[lein-figwheel "0.5.15"]
+                        [lein-doo "0.1.8"]
+                        [lein-pprint "1.1.1"]]
                         
 
               :source-paths ["dev"]

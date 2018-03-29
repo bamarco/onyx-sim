@@ -2,9 +2,9 @@
   (:require
    [doo.runner :refer-macros [doo-tests]]
    [onyx.sim.core-test]
-   [onyx.sim.common-test]))
+   [onyx.sim.api-test]))
 
 (enable-console-print!)
 
 (doo-tests 'onyx.sim.core-test
-           'onyx.sim.common-test)
+           'onyx.sim.api-test)
