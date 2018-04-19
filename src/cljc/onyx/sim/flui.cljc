@@ -28,7 +28,7 @@
     ;; TODO: syntax highlighting
     (let [args (-> args
                    (dissoc :code :pr-fn)
-                   (assoc :class (str "rc-code " cl )))
+                   (assoc :class (str "rc-code " cl)))
           code ((or pr-fn ppr-str) code)]
       (assert (not child) (str "Code should not have a :child element. Got " child))
       (mapply rc/box :child [:code [:pre code]] args))))

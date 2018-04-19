@@ -6,7 +6,8 @@
             [onyx.sim.core :as sim]))
 
 (defn show-ui [conn]
-  [sim/sim-selector conn])
+  ; [sim/sim-selector conn]
+  [sim/sim-selector2])
 
 (defrecord UIComponent [knowbase]
   component/Lifecycle

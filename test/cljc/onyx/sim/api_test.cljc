@@ -2,8 +2,12 @@
   (:require 
     [onyx.sim.api :as onyx]
     [onyx.plugin.seq]
+    [onyx.plugin.null]
+    [onyx.plugin.core-async]
     [onyx.static.util :refer [kw->fn]]
     [onyx.plugin.protocols :as p]
+    [datascript.core :as d]
+    [onyx.sim.lifecycle :as lc]
     [clojure.core.async :as async :refer [go go-loop <! >! #?@(:clj [<!! >!!])]]
     [clojure.test :as test :refer [is deftest are testing]]))
 
@@ -63,41 +67,81 @@
               :onyx/batch-size batch-size}]
     :workflow [[:in ::identity] [::identity :out]]})
 
-(def a-seq-plugin
-  {:seq/seq [{:hello 1} {:hello 2} {:hello 3}]
-   :onyx/type :input
-   :onyx/plugin :onyx.plugin.seq
-   :onyx/batch-size batch-size
-   :onyx/name :in})
-
-(def a-plugin-job
-  {:catalog [a-seq-plugin
-             {:onyx/name       ::identity
-              :onyx/fn         ::seg-identity-async
-              :onyx/type       :function
-              :onyx/batch-size batch-size}
-             {:onyx/name       :out
-              :onyx/type       :output
-              :onyx/batch-size batch-size}]
-   :workflow [[:in ::identity] [::identity :out]]})
-
-(def batched-plugin-job
+(defn seq->out-job [& {:as opts :keys [batch-size] :or {batch-size 20}}]
   {:catalog 
-   [{:seq/seq [{:hello 1} {:hello 2} {:hello 3}]
-     :onyx/type :input
+   [{:onyx/type :input
      :onyx/plugin :onyx.plugin.seq
-     :onyx/batch-size 2
+     :onyx/batch-size batch-size
      :onyx/name :in}
     {:onyx/name       ::identity
      :onyx/fn         ::seg-identity-async
      :onyx/type       :function
-     :onyx/batch-size 2}
+     :onyx/batch-size batch-size}
     {:onyx/name       :out
      :onyx/type       :output
-     :onyx/batch-size 2}]
+     :onyx/batch-size batch-size}]
+
+   :workflow 
+   [[:in ::identity] 
+    [::identity :out]]
+
+   :lifecycles
+   [{:lifecycle/task :in
+     :seq/sequential [{:hello 1} {:hello 2} {:hello 3}]
+     :lifecycle/calls :onyx.plugin.seq/inject-seq-via-lifecycle}]})
+  
+(defn seq->chan-job [chan-id]
+  {:catalog 
+   [{:onyx/type :input
+     :onyx/plugin :onyx.plugin.seq
+     :onyx/batch-size batch-size
+     :onyx/name :in}
+    {:onyx/name       ::identity
+     :onyx/fn         ::seg-identity-async
+     :onyx/type       :function
+     :onyx/batch-size batch-size}
+    {:onyx/type :output
+     :onyx/batch-size batch-size
+     :onyx/name :out
+     :onyx/plugin :onyx.plugin.core-async
+     :onyx/medium :core.async}]
+
+   :workflow 
+   [[:in ::identity] 
+    [::identity :out]]
+
+   :lifecycles
+   [{:lifecycle/task :in
+     :seq/sequential [{:hello 1} {:hello 2} {:hello 3}]
+     :lifecycle/calls :onyx.plugin.seq/inject-seq-via-lifecycle}
+    {:lifecycle/task :out
+     :lifecycle/calls :onyx.plugin.core-async/out-calls
+     :core.async/id chan-id}]})
+
+(def async-job
+  {:catalog
+   [{:onyx/name       :in
+      :onyx/type       :input
+      :onyx/plugin     :onyx.plugin.core-async
+      :onyx/medium     :core.async
+      :onyx/batch-size batch-size}
+    {:onyx/name       :out
+      :onyx/type       :output
+      :onyx/plugin     :onyx.plugin.core-async
+      :onyx/medium     :core.async
+      :onyx/batch-size batch-size}]
 
    :workflow
-   [[:in ::identity] [::identity :out]]})
+   [[:in :out]]
+
+   :lifecycles
+   [{:lifecycle/task :in
+      :lifecycle/calls :onyx.sim.lifecycle/resource-calls
+      :onyx.sim.lifecycle/inject {:core.async/chan [:in>]
+                                  :core.async/buffer  [:in-buf]}}
+    {:lifecycle/task :out
+      :lifecycle/calls :onyx.sim.lifecycle/resource-calls
+      :onyx.sim.lifecycle/inject {:core.async/chan [:out>]}}]})
 
 (deftest test-new-inputs
   (let [env (-> (onyx/init identity-job)
@@ -160,32 +204,20 @@
                 (get-in env [:tasks :out :outputs])
                 [{:hello 1} {:hello 2} {:hello 3}]))))))))
 
-(deftest test-poll
-  (let [pipeline (onyx.plugin.seq/input a-seq-plugin)
-        event (:event pipeline)
-        timeout 1000
-        _ (p/recover! pipeline nil nil)
-        chunk (p/poll! pipeline event timeout)]
-    (is 
-      chunk
-      [{:hello 1}])))
-
 (deftest test-poll-job
-  (let [env (-> a-plugin-job
+  (let [env (-> (seq->out-job :batch-size 20)
               (onyx/init)
-              (onyx/transition-env {:onyx.sim.api/event :onyx.sim.api/poll!}))
+              (onyx/transition-env :onyx.sim.api/poll!))
         _ (is (= 
                 (get-in env [:tasks :in :inbox]) 
                 [{:hello 1} {:hello 2} {:hello 3}]))
-        env-chan (onyx/go-drain env)
-        batch-env-chan (-> batched-plugin-job
-                         (onyx/init)
-                         (onyx/transition-env {:onyx.sim.api/event :onyx.sim.api/poll!})
-                         (onyx/go-drain))]
+        batch-env (-> (seq->out-job :batch-size 2)
+                      (onyx/init)
+                      (onyx/transition-env :onyx.sim.api/poll!))]
     (test-async
       (test-within 1000
         (go
-          (let [env (<! env-chan)]
+          (let [env (onyx/<transition-env env :onyx.sim.api/go-drain)]
             (is
               (= 
                 (get-in env [:tasks :out :outputs])
@@ -193,9 +225,85 @@
     (test-async
       (test-within 1000
         (go
-          (let [env (<! batch-env-chan)]
+          (let [env (onyx/<transition-env batch-env :onyx.sim.api/go-drain)]
             (is
               (=
                 (get-in env [:tasks :out :outputs])
                 [{:hello 1} {:hello 2}]))))))))
 
+(deftest test-chan-plugin
+  (let [env (-> (seq->chan-job 42)
+                (onyx/init)
+                (onyx/transition-env :onyx.sim.api/poll!))]
+    (test-async
+      (test-within 1000
+        (go
+          (let [drained-env (onyx/<transition-env env :onyx.sim.api/go-drain)
+                flushed-env (onyx/<transition-env drained-env :onyx.sim.api/go-write!)]
+            (is
+              (=
+                (get-in drained-env [:tasks :out :outputs])
+                [{:hello 1} {:hello 2} {:hello 3}]))
+            (is
+              (=
+                (get-in flushed-env [:tasks :out :outputs])
+                []))))))
+    (test-async
+      (test-within 1000
+        (go
+          (let [chan (onyx.plugin.core-async/get-channel 42)
+                out [(<! chan) (<! chan) (<! chan)]]
+            (is
+              (=
+                out
+                [{:hello 1} {:hello 2} {:hello 3}]))))))))
+
+(deftest test-go-job
+  (let [env-chan (onyx/go-job! (seq->out-job))]
+    (test-async
+      (test-within 1000
+        (go
+          (let [env (<! env-chan)]
+            (is
+              (=
+                (get-in env [:tasks :out :outputs])
+                [{:hello 1} {:hello 2} {:hello 3}]))))))))
+
+(deftest test-full-async-job
+  (let [in> (async/chan)
+        out> (async/chan)
+        job (lc/bind-resources async-job {:in>  in>
+                                          :in-buf (atom {})
+                                          :out> out>})
+        _ (onyx/go-job! job)
+        _ (go
+            (async/onto-chan in> [{:hello 1} {:hello 2} {:hello 3}] false))]
+    (test-async
+      (test-within 1000
+        (go
+          (let [outs (<! out>)]
+            (is outs [{:hello 1} {:hello 2} {:hello 3}])))))))
+
+
+(defn create-sim []
+  {:envs (atom {})
+   :transact! d/transact!
+   :dat.sync.db/q d/q
+   :dat.sync.db/pull d/pull
+   :dat.sync.db/deref deref
+   :dat.sync.db/conn (d/create-conn)})
+
+; (deftest test-submit-job
+;   (let [sim (create-sim)
+        
+;         ; _ (onyx/sumit-job sim job)
+;         ; _ (go-schedule-jobs! sim)
+;         env-chan (onyx/go-job! seq->out-job)]
+;     (test-async
+;       (test-within 1000
+;         (go
+;           (let [env (<! env-chan)]
+;             (is
+;               (=
+;                 (get-in env [:tasks :out :outputs]))
+;               [{:hello 1} {:hello 2} {:hello 3}])))))))

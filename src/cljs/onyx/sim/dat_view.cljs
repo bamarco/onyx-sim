@@ -34,7 +34,7 @@
   ;; TODO: implement. for now a hardcoded value for testing
   '[:?todo])
 
-(defn process-event [db env {:as seg :keys [onyx.sim/sim]}]
+(defn process-event [db env {:as seg :keys [onyx.sim.core/sim]}]
     (-> (onyx/new-segment env :dat.view/dispatch (assoc seg :dat.sync.db/snapshot db))
         onyx/drain
         :tasks
@@ -43,7 +43,7 @@
         first
         :dat.sync.db/txs))
 
-(defn dispatch! [{:as sys :keys [dat.sync.db/conn onyx.sim/sim]}
+(defn dispatch! [{:as sys :keys [dat.sync.db/conn onyx.sim.core/sim]}
                  {:as seg :keys [dat.view.event/context]}
                  & inputs]
   ;; ???: what happens when you listen to a ratom inside a dispatch method?
@@ -102,7 +102,7 @@
 ;;;
 ;;; Onyx render
 ;;;
-(defn render-segment [{:as sys :keys [dat.sync.db/conn onyx.sim/sim]}
+(defn render-segment [{:as sys :keys [dat.sync.db/conn onyx.sim.core/sim]}
                       {:as seg}]
 ;;   (log/info "rendering seg" seg)
   (let [env @(event/subscribe-clean-env conn sim)]
@@ -119,8 +119,8 @@
       (catch :default e
         [sim/sim-debug
          sys
-         {:onyx.sim/inputs {:dat.view/render [seg]}
-          :onyx.sim/error e}]))))
+         {::inputs {:dat.view/render [seg]}
+          ::error e}]))))
 
 
 ;; (defn render-segments->debug-sim [db parent-sim-id segs child-name]
@@ -130,14 +130,14 @@
 ;;     nil
 ;; ;;   [(into
 ;; ;;      sim/default-sim
-;; ;;      {:onyx.sim/title child-name
-;; ;;       :onyx/type :onyx.sim/sim
+;; ;;      {::title child-name
+;; ;;       :onyx/type ::sim
 ;; ;;       :onyx.core/job (get-in parent-sim [:onyx.core/job :db/id])
-;; ;;       :onyx.sim/env (reduce #(onyx/new-segment %1 :dat.view/render %2) (:onyx.sim/clean-env parent-sim) segs)
-;; ;;       :onyx.sim/clean-env (:onyx.sim/clean-env parent-sim)})]
+;; ;;       ::env (reduce #(onyx/new-segment %1 :dat.view/render %2) (::clean-env parent-sim) segs)
+;; ;;       ::clean-env (::clean-env parent-sim)})]
 ;;     ))
 
-(defn box* [{:as sys :keys [dat.sync.db/conn onyx.sim/sim]}
+(defn box* [{:as sys :keys [dat.sync.db/conn onyx.sim.core/sim]}
             {:as seg :keys [dat.view.rep/direction
                             dat.view.rep/layout
                             dat.view.rep/style]}]
@@ -191,7 +191,7 @@
 
 (defn ^:export text-input [sys
                            {:as seg :keys [dat.view.rep/label]}]
-;;   (log/info "text-input" label (:onyx.sim/sim sys) event)
+;;   (log/info "text-input" label (::sim sys) event)
   (assoc
     seg
     :dat.view.rep/component
@@ -321,7 +321,7 @@
 
     {:onyx/name :dat.view/mount
      :onyx/type :output
-     :onyx.sim/render sim-render
+     ::render sim-render
      :onyt/batch-size onyx-batch-size}
     {:onyx/name :dat.sync/transact
      :onyx/type :output
@@ -403,7 +403,7 @@
             (fn [lifecycles]
               (for [lc lifecycles]
                 (with-meta lc {:dat.sync.db/conn conn
-                               :onyx.sim/sim [:onyx/name sim-name]}))))
+                               ::sim [:onyx/name sim-name]}))))
      :transitions [{:event :onyx.sim.api/inputs
                     :inputs {:dat.view/render
                              [{:dat.view/route :dat.view.route/todos}

@@ -2,22 +2,26 @@
   (:require [taoensso.timbre :as log]
             [onyx-local-rt.api :as onyx]
             [onyx-local-rt.impl :as i]
+            [reagent.core :as r]
             [onyx.static.util :refer [kw->fn]]
             [onyx.plugin.protocols :as p]
+            [onyx.plugin.core-async]
             [datascript.core :as d]
             [clojure.spec.alpha :as s]
-            [clojure.core.async.impl.protocols :refer [WritePort ReadPort Channel]]
+            [onyx.sim.log.zookeeper :as zlog]
+            [onyx.extensions :as extensions]
+            [clojure.core.async.impl.protocols :refer [WritePort ReadPort Channel closed?]]
             [clojure.core.async :as async :refer [go go-loop <! >!]]
             [onyx.sim.utils #?@(:clj  (:refer [xfn])
-                                :cljs (:refer-macros [xfn]))]))
-            
+                                :cljs (:refer-macros [xfn]))])
+  #?(:cljs
+     (:require-macros [onyx.sim.api :refer [<transition-env]])))
 
 (defonce onyx-batch-size 20)
 
 (def env-summary     onyx/env-summary)
 (def tick            onyx/tick)
 (def drain           onyx/drain)
-; (def transition-env  onyx/transition-env)
 (def new-segment     onyx/new-segment)
 
 ;;
@@ -36,8 +40,19 @@
     (plugin? task-state)
     (= :output (get-in task-state [:event :onyx.core/task-map :onyx/type]))))
 
+(defn- lc-hack 
+  "DEPRECATED This is a temporary lifecycle hack. Don't use this outside of onyx-sim. Eventually needs to be replaced with full onyx replica state machine and replica support."
+  [event]
+  (let [f (get-in event [:onyx.core/compiled :compiled-before-task-start-fn])]
+    (merge event (f event))))
+
 (defn- init-plugin [task-state]
+  ; (log/info "evvvvvvv" 
+  ;   (get-in task-state [:event :onyx.core/task-map :onyx/name]) 
+  ;   (:core.async/chan (lc-hack (:event task-state)))
+  ;   (:seq/seq (lc-hack (:event task-state))))
   (let [task (get-in task-state [:event :onyx.core/task-map])
+        hacked-event (lc-hack (:event task-state))
         ns-name (str (name (:onyx/plugin task)))
         init-name (cond 
                     (= :input (:onyx/type task))
@@ -49,7 +64,7 @@
     (assoc
       task-state
       :pipeline
-      (init task))))
+      (init hacked-event))))
 
 (defn- task-state><init []
   (map 
@@ -59,9 +74,9 @@
                     task-state)])))
 
 (defn- init-plugins [env]
-  (update-in
+  (update
     env
-    [:tasks]
+    :tasks
     #(into {} (task-state><init) %)))
 
 (defn- recover-plugins! [env]
@@ -73,9 +88,11 @@
     (p/recover! (:pipeline task) nil nil)))
 
 (defn init [job]
+  ; (log/info "initting")
   (let [env (-> job
               (onyx/init)
               (init-plugins))]
+    ; (log/info "initted?" (get-in env [:tasks :in :pipeline]))
     (recover-plugins! env)
     env))
 
@@ -134,7 +151,7 @@
           [task-name (:outputs task)])))
     (:tasks env)))
 
-(defn- read-chan? [obj] 
+(defn read-chan? [obj] 
   (satisfies? ReadPort obj))
 
 (defn- go-batch 
@@ -190,7 +207,6 @@
 (defn go-tick
   "Asynchronously ticks the env."
   ([env n]
-    ;; TODO: fix for async
    (go-loop [env env
              n n]
      (if (= n 0)
@@ -233,15 +249,30 @@
             env (<! chan)]
         (recur env (dec ticks-left))))))
 
-(defn- batch! [task-state timeout]
+(defn- batch-in! [task-state timeout]
   (loop [segs []
          batch-left (get-in task-state [:event :onyx.core/task-map :onyx/batch-size])]
     ; (log/info "batch-left" batch-left)
     (if (= batch-left 0)
       segs
-      (if-let [seg (p/poll! (:pipeline task-state) (:event task-state) timeout)]
+      (if-let [seg (p/poll! (:pipeline task-state) (lc-hack (:event task-state)) timeout)]
         (recur (conj segs seg) (dec batch-left))
         segs))))
+
+(defn- go-write-batch! [task-state & {:as opts :keys [timeout max-attempts] :or {timeout 1000 max-attempts 10000}}]
+  (let [event (assoc (lc-hack (:event task-state)) :onyx.core/write-batch (:outputs task-state))]
+    ; (log/info "prepared before"  @(:prepared (:pipeline task-state)))
+    (p/prepare-batch (:pipeline task-state) event nil nil)
+    ; (log/info "prepared after"  @(:prepared (:pipeline task-state)))
+    (go-loop [max-attempts max-attempts]
+      (let [finished? (p/write-batch (:pipeline task-state) event nil nil)]
+        (if finished?
+          true
+          (if (= max-attempts 0)
+            false
+            (do
+              (<! (async/timeout timeout))
+              (recur (dec max-attempts)))))))))
 
 (defn poll-plugins! [env & {:as opts :keys [timeout] :or {timeout 1000}}]
   (into
@@ -253,15 +284,47 @@
       (map
         (fn [[task-name task-state]]
           [task-name
-           (batch! task-state timeout)]))) 
+           (batch-in! task-state timeout)]))) 
     (:tasks env)))
 
-(defn offer-plugins! [env])
-  ;; TODO: return {output-task segments} that were taken by all output plugins
+(defn go-write-plugins! [env & {:as opts :keys [timeout] :or {timeout 1000}}]
+  (go-loop [env env
+            outs (filter
+                   (fn [[_ task-state]]
+                    (output-plugin? task-state)) 
+                   (get-in env [:tasks]))]
+    (if (empty? outs)
+      env
+      (let [[task-name task-state] (first outs)]
+        (if (<! (go-write-batch! task-state))
+           (recur (assoc-in env [:tasks task-name :outputs] []) (rest outs))
+           false))))) ;; ???: false as error?
 
-(defmulti transition-env 
+(defn polls-closed? [env]
+  (empty?
+    (into
+      []
+      (comp
+        (map second)
+        (filter input-plugin?)
+        (map :pipeline)
+        (remove p/completed?))
+      (:tasks env))))
+
+(defmulti transition-env
   (fn [env action-data]
-    (::event action-data)))
+    (if (keyword? action-data)
+       action-data
+      (or (::event action-data)
+          (:event action-data)))))
+
+#?
+(:clj
+  (defmacro <transition-env [env action-data]
+    `(let [maybe-chan# (transition-env ~env ~action-data)]
+       (if (read-chan? maybe-chan#)
+         (<! maybe-chan#)
+         maybe-chan#))))
 
 (defmethod transition-env ::init
   [_ {::keys [job]}]
@@ -296,117 +359,72 @@
   (new-inputs env
     (poll-plugins! env)))
 
-(defmethod transition-env ::offer!
+(defmethod transition-env ::go-drain
   [env action]
-  (remove-outputs env
-    (offer-plugins! env)))
+  (go-drain env))
 
-; (defn into-meta [obj m]
-;   (vary-meta
-;    obj
-;    #(into
-;      (or % {})
-;      m)))
+(defmethod transition-env ::go-write!
+  [env action]
+  (go-write-plugins! env))
 
-; (defn inject-lifecycle-resources [job resources]
-;   (update-in
-;    job
-;    [:onyx.core/lifecycles]
-;    (fn [lifecycles]
-;      (for [lc lifecycles]
-;        (into-meta lc resources)))))
+(defmethod transition-env :default
+  [env action]
+  ;; treats unknown transitions as noop
+  (if (nil? env)
+    ;; if env is nil action must be an env
+    action
+    (do
+      (log/info "Treating transition " action " as a noop")
+      env)))
 
-(defn simple-submit-job
-  "Initializes the job and drains the job asynchronously."
-  [job inputs & opts]
-  (let [env (-> (init job)
-                (new-inputs inputs))]
-    (apply go-drain env opts)))
+(defn go-transitions [transitions]
+  (go-loop [env nil
+            transitions transitions]
+    ; (log/info "tss" (first transitions))
+    (if (empty? transitions)
+      env
+      (let [env (<transition-env env (first transitions))]
+        (recur env (rest transitions))))))
 
-;;;
-;;; !!!: New Hotness!
-;;;
-; (defn chan-poll-batch!
-;   "Plugins that implement the Onyx Input poll! protocol can call this function to poll a batch of segments"
-;   [chan batch-size]
-;   (loop [segs []]
-;     (if-not (< (count segs) batch-size) segs
-;       (if-let [seg (async/poll! chan)]
-;         (recur (conj segs seg))
-;         segs))))
+(defn go-job!
+  "Initializes the job and drains the job asynchronously"
+  [job & opts]
+  (go-transitions 
+    [{::event ::init
+      ::job job} 
+     ::poll! 
+     ::go-drain
+     ::go-write!]))
 
-; #?
-; (:clj
-;   (defn poll-env!
-;     "Reads a batch of segments for every input plugin for the given onyx env and creates a ::batch transition."
-;     [env & {:as opts :keys [timeout]}]
-;     {::event   ::inputs
-;       ::onyx-id (::tenancy-id env)
-;       ::inputs 
-;       (into {})
-;       (for [[task-name {:as task :keys [pipeline event]}] (filter (fn [[_ task]] (input-task? task)) (:tasks env))]
-;         (let [batch (p/poll! pipeline event timeout)]
-;           [task-name batch]))}))
+(def job-id-query
+  '[:find ?job-id .
+    :where
+    [?tss ::complete? false]
+    [?tss ::job-id job-id]])
 
-; #?
-; (:clj
-;   (defn flush-env! 
-;     "Writes a batch of segments for every output plugin for the given output env and creates a ::flush transition"
-;     [env]
-;     (let [replica   nil
-;           messenger nil]
-;       {::event   ::flush}
-;       ::onyx-id (::tenancy-id env)
-;       ::remove
-;       (into {}
-;         (for [[task-name {:as task :keys [pipeline event outbox]}] (filter (fn [[_ task]] (output-task? task)) (:tasks env))]
-;           ;; TODO: handle prepare-batch and write-batch delays
-;           (do
-;             (p/prepare-batch pipeline event replica messenger)
-;             (p/write-batch pipeline event replica messenger)
-;             [task-name outbox]))))))
+(defn go-schedule-jobs! [{:keys [transact! q db conn envs]}]
+  ;; TODO: add kill/control chan
+  ;; TODO: scheduler
+  (go-loop []
+    (let [job-ids (q (db conn) job-id-query)
+          job-id->env @envs]
+      (doseq [job-id job-ids]
+        (let [env (<! (go-job! (job-id->env job-id)))]
+          (swap! envs assoc job-id env)
+          (when (polls-closed? env)
+            (transact! conn [{::job-id job-id
+                              ::complete? true}])))))
+    (recur)))
 
-; #?
-; (:cljs 
-;   (defn active-envs [{:as simulator :keys [conn envs]}]
-;       (let [active-ids (d/q) 
-;                       '[:find ?tenancy-id .
-;                         :where
-;                         [?job ::active?    true]
-;                         [?job ::tenancy-id ?tenancy-id]]
-;                       @conn])
-;       (select-keys @envs active-ids)))
+(defn gen-uuid []
+  (d/squuid))
 
-; #?
-; (:cljs
-;   (defn go!
-;     "Starts a go-loop that will loop through all the envs in an onyx simulator. Polling the input plugins for a batch of segments, draining the envs, and writing the batch of output segments to the output plugins"
-;     [{:as simulator :keys [conn]} & opts]
-;     ;; ???: add throttling when no segments are in flight? might churn cpu or maybe core.async has it covered
-;     (go-loop []
-;       (let [actives (active-envs simulator)]
-;         (doseq [env actives]
-;           (let [batch (apply poll-env! env opts)]
-;             (d/transact! conn batch)))
-;         (doseq [env actives]
-;           (let [env (<! (apply go-drain env opts))
-;                 batch (apply flush-env! env opts)]
-;             (d/transact! conn batch))))  
-;       (recur))))
-
-;; ???: side-effect functions return events rather than voids? why not just use transactor model?
-
-; (defn submit-job! 
-;   "Transacts a job into the simulator."
-;   [{:as sim :keys [conn]} job]
-;   (let [job-id   (or (:job-id job)) ;(gen-uuid))
-;         job-hash (hash job)
-;         tenancy-id (or (:tenancy-id job) job-hash)]
-;     (d/transact! 
-;       conn
-;       ;; ???: which of this identifiers are neccessary: tenancy-id, job-id, job-hash?
-;       {::event      :onyx.sim.api/init
-;        ::tenancy-id tenancy-id
-;        ::job-id     job-id
-;        ::job-hash   job-hash
-;        ::job        job})))
+(defn submit-job [{:keys [transact! conn envs]} job]
+  (let [job-id (or (:onyx/job-id job) (gen-uuid))]
+    (transact!
+      conn
+      [{::event ::init
+        ::job job
+        ::complete? false
+        ::job-id job-id}]))
+  true)

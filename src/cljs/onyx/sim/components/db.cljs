@@ -9,14 +9,14 @@
 (defn create-conn []
   (let [conn (d/create-conn sim/ds-schema)]
     (posh/posh! conn)
-    (d/transact! conn sim/base-ui)
-    (sim/sim! conn)
+    ; (d/transact! conn sim/base-ui)
+    ; (sim/sim! conn)
 
-    (d/transact! conn sim/examples)
+    ; (d/transact! conn sim/examples)
 
-    (d/transact! conn [(dat.view/make-sim conn)
-                       [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-sim [:onyx/name :dat.view/sim]]])
-    (d/transact! conn (dat.view/example))
+    ; (d/transact! conn [(dat.view/make-sim conn)
+    ;                    [:db/add [:onyx/name :onyx.sim/settings] :onyx.sim/selected-sim [:onyx/name :dat.view/sim]]])
+    ; (d/transact! conn (dat.view/example))
 
     conn))
 
