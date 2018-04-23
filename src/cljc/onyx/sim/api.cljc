@@ -47,7 +47,7 @@
     (merge event (f event))))
 
 (defn- init-plugin [task-state]
-  ; (log/info "evvvvvvv" 
+  ; (log/debug "evvvvvvv" 
   ;   (get-in task-state [:event :onyx.core/task-map :onyx/name]) 
   ;   (:core.async/chan (lc-hack (:event task-state)))
   ;   (:seq/seq (lc-hack (:event task-state))))
@@ -88,11 +88,11 @@
     (p/recover! (:pipeline task) nil nil)))
 
 (defn init [job]
-  ; (log/info "initting")
+  ; (log/debug "initting")
   (let [env (-> job
               (onyx/init)
               (init-plugins))]
-    ; (log/info "initted?" (get-in env [:tasks :in :pipeline]))
+    ; (log/debug "initted?" (get-in env [:tasks :in :pipeline]))
     (recover-plugins! env)
     env))
 
@@ -216,15 +216,15 @@
   ([env]
    (go
      (let [this-action (:next-action env)
-          ;  _ (log/info "action" this-action)
+          ;  _ (log/debug "action" this-action)
            env (i/integrate-task-updates env this-action)
-          ;  _ (log/info "pending-writes" (:pending-writes env))
+          ;  _ (log/debug "pending-writes" (:pending-writes env))
            env (if (empty? (:pending-writes env))
                   env
                   (<! (go-transfer-pending-writes env)))
-          ;  _ (log/info "pending-writes" (:pending-writes env))
+          ;  _ (log/debug "pending-writes" (:pending-writes env))
            env (i/transition-action-sequence env this-action)]
-          ;  _ (log/info "next-action" (:next-action env))]
+          ;  _ (log/debug "next-action" (:next-action env))]
         env))))
 
 (defn go-drain 
@@ -233,7 +233,7 @@
   ;; TODO: max-ticks
   (go-loop [env env
             ticks-left max-ticks]
-    ; (log/info "go-loop :inbox/outbox " (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
+    ; (log/debug "go-loop :inbox/outbox " (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
     (cond
       (onyx/drained? env)
       env
@@ -252,18 +252,24 @@
 (defn- batch-in! [task-state timeout]
   (loop [segs []
          batch-left (get-in task-state [:event :onyx.core/task-map :onyx/batch-size])]
-    ; (log/info "batch-left" batch-left)
+    ; (log/debug "batch-left" batch-left)
     (if (= batch-left 0)
-      segs
+      (do 
+        (log/info "Batch full for" (get-in task-state [:event :onyx.core/task-map :onyx/name]))
+        (log/debug "  segs:" segs)
+        segs)
       (if-let [seg (p/poll! (:pipeline task-state) (lc-hack (:event task-state)) timeout)]
         (recur (conj segs seg) (dec batch-left))
-        segs))))
+        (do
+          (log/info "Batch ready for" (get-in task-state [:event :onyx.core/task-map :onyx/name]))
+          (log/debug "  segs:" segs)
+          segs)))))
 
 (defn- go-write-batch! [task-state & {:as opts :keys [timeout max-attempts] :or {timeout 1000 max-attempts 10000}}]
   (let [event (assoc (lc-hack (:event task-state)) :onyx.core/write-batch (:outputs task-state))]
-    ; (log/info "prepared before"  @(:prepared (:pipeline task-state)))
+    ; (log/debug "prepared before"  @(:prepared (:pipeline task-state)))
     (p/prepare-batch (:pipeline task-state) event nil nil)
-    ; (log/info "prepared after"  @(:prepared (:pipeline task-state)))
+    ; (log/debug "prepared after"  @(:prepared (:pipeline task-state)))
     (go-loop [max-attempts max-attempts]
       (let [finished? (p/write-batch (:pipeline task-state) event nil nil)]
         (if finished?
@@ -350,7 +356,7 @@
   [env _]
   (drain env))
   
-(defmethod transition-env ::inputs
+(defmethod transition-env ::new-inputs
   [env {::keys [inputs]}]
   (new-inputs env inputs))
 
@@ -396,35 +402,95 @@
      ::go-drain
      ::go-write!]))
 
-(def job-id-query
-  '[:find ?job-id .
+(def job-tss-query
+  '[:find [(pull ?tss [::event ::job ::job-id]) ...]
     :where
     [?tss ::complete? false]
-    [?tss ::job-id job-id]])
+    [?tss ::event ::init]])
 
-(defn go-schedule-jobs! [{:keys [transact! q db conn envs]}]
+(defn go-env! [env]
+  (go
+    (let [inputs (poll-plugins! env)]
+      (if (empty? inputs)
+        ::pause
+        (<!
+          (go-transitions
+           [env
+            {::event ::new-inputs
+             ::inputs inputs}
+            ::go-drain
+            ::go-write!]))))))
+
+(defn go-envs! [envs control>]
+  (go-loop [envs envs
+            pause true]
+    (if (empty? envs)
+      (if pause ::pause ::success)
+      (let [[signal chan] (async/alts! [(go-env! (first envs)) control>])]
+        (if (= control> chan)
+          (if-not (= signal ::kill)
+            (do
+              (log/warn "Unhandled signal:" signal)
+              (recur envs pause))
+            ::kill)
+          (if (= ::pause signal)
+            (recur (rest envs) pause)
+            (recur (rest envs) false)))))))
+
+(defn go-schedule-jobs! [{:dat.sync.db/keys [transact! q deref conn] :keys [envs control>]}]
   ;; TODO: add kill/control chan
   ;; TODO: scheduler
+  ;; TODO: completion signal
   (go-loop []
-    (let [job-ids (q (db conn) job-id-query)
-          job-id->env @envs]
-      (doseq [job-id job-ids]
-        (let [env (<! (go-job! (job-id->env job-id)))]
-          (swap! envs assoc job-id env)
-          (when (polls-closed? env)
-            (transact! conn [{::job-id job-id
-                              ::complete? true}])))))
-    (recur)))
+    (let [envs (vals @envs)
+          signal (<! (go-envs! envs control>))]
+      (case signal
+       ::pause
+       (do
+         (log/info "Nothing to poll, pausing now")
+         (<! (async/timeout 300))
+         (recur))
+       ::kill
+       (log/info "Kill Signal recieved. Closing job scheduler...")
+
+       (recur)))))
+  ; (go-loop []
+  ;   (let [tsses (q job-tss-query (deref conn))
+  ;         job-id->env @envs]
+  ;     (if (empty? tsses)
+  ;       (do
+  ;         (log/info "No jobs to process, sleeping now")
+  ;         (async/timeout 1000))
+  ;       (doseq [tss tsses]
+  ;         ; (log/info "tss" tss ::job)
+  ;         (let [job-id (::job-id tss)
+  ;               _ (log/info "Processing job:" job-id)
+  ;               env (<! (go-transitions [(or (job-id->env job-id) tss) ::poll! ::go-drain ::go-write!]))]
+  ;           (swap! envs assoc job-id env)
+  ;           (when (polls-closed? env)
+  ;             (log/info "closing job " job-id)
+  ;             (transact! conn [{::job-id job-id
+  ;                               ::complete? true}]))))))
+  ;  (recur)))
 
 (defn gen-uuid []
   (d/squuid))
 
-(defn submit-job [{:keys [transact! conn envs]} job]
+(defn submit-job [{:dat.sync.db/keys [transact! conn] :keys [envs]} job]
   (let [job-id (or (:onyx/job-id job) (gen-uuid))]
-    (transact!
-      conn
-      [{::event ::init
-        ::job job
-        ::complete? false
-        ::job-id job-id}]))
-  true)
+    (log/info "Submitting job:" job-id)
+    (swap! 
+      envs
+      assoc
+      job-id
+      (into
+        (init job)
+        {::job-id job-id
+         ::complete? false}))
+    ; (transact!
+    ;   conn
+    ;   [{::event ::init
+    ;     ::job job
+    ;     ::complete? false
+    ;     ::job-id job-id}]))
+    true))

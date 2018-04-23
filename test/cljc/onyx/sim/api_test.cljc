@@ -118,7 +118,7 @@
      :lifecycle/calls :onyx.plugin.core-async/out-calls
      :core.async/id chan-id}]})
 
-(def async-job
+(def chan->chan-job
   {:catalog
    [{:onyx/name       :in
       :onyx/type       :input
@@ -272,38 +272,61 @@
 (deftest test-full-async-job
   (let [in> (async/chan)
         out> (async/chan)
-        job (lc/bind-resources async-job {:in>  in>
-                                          :in-buf (atom {})
-                                          :out> out>})
+        job (lc/bind-resources chan->chan-job {:in>  in>
+                                               :in-buf (atom {})
+                                               :out> out>})
         _ (onyx/go-job! job)
-        _ (go
-            (async/onto-chan in> [{:hello 1} {:hello 2} {:hello 3}] false))]
+        _ (go (async/onto-chan in> [{:hello 1} {:hello 2} {:hello 3}]))]
     (test-async
       (test-within 1000
         (go
-          (let [outs (<! out>)]
-            (is outs [{:hello 1} {:hello 2} {:hello 3}])))))))
+          (let [outs [(<! out>) (<! out>) (<! out>)]]
+            (is 
+              (= outs 
+                [{:hello 1} {:hello 2} {:hello 3}]))))))))
 
 
 (defn create-sim []
   {:envs (atom {})
-   :transact! d/transact!
+   :control> (async/chan)
+   :dat.sync.db/transact! d/transact!
    :dat.sync.db/q d/q
    :dat.sync.db/pull d/pull
    :dat.sync.db/deref deref
-   :dat.sync.db/conn (d/create-conn)})
+   :dat.sync.db/conn (d/create-conn {:onyx.sim.api/job-id {:db/unique :db.unique/identity}})})
+   
 
-; (deftest test-submit-job
-;   (let [sim (create-sim)
-        
-;         ; _ (onyx/sumit-job sim job)
-;         ; _ (go-schedule-jobs! sim)
-;         env-chan (onyx/go-job! seq->out-job)]
-;     (test-async
-;       (test-within 1000
-;         (go
-;           (let [env (<! env-chan)]
-;             (is
-;               (=
-;                 (get-in env [:tasks :out :outputs]))
-;               [{:hello 1} {:hello 2} {:hello 3}])))))))
+(deftest test-submit-job
+  (let [in> (async/chan)
+        out> (async/chan)
+        job (lc/bind-resources chan->chan-job {:in>  in>
+                                                :in-buf (atom {})
+                                                :out> out>})
+        in2> (async/chan)
+        out2> (async/chan)
+        job2 (lc/bind-resources chan->chan-job {:in>  in2>
+                                                :in-buf (atom {})
+                                                :out> out2>})
+        sim (create-sim)]
+    (onyx/submit-job sim job)
+    (onyx/submit-job sim job2)
+    (onyx/go-schedule-jobs! sim)
+    (go (async/onto-chan in> [{:hello 1} {:hello 2} {:hello 3}]))
+    (go (async/onto-chan in2> [{:hello 4} {:hello 5} {:hello 6}]))
+
+    (test-async
+      (test-within 1000
+        (go
+          (let [outs [(<! out>) (<! out>) (<! out>)]]
+            (is
+              (=
+                outs
+                [{:hello 1} {:hello 2} {:hello 3}]))))))
+    (test-async
+      (test-within 1000
+        (go
+          (let [outs [(<! out2>) (<! out2>) (<! out2>)]]
+            (is
+              (=
+                outs
+                [{:hello 4} {:hello 5} {:hello 6}]))))))))
