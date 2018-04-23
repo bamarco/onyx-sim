@@ -412,7 +412,7 @@
   (go
     (let [inputs (poll-plugins! env)]
       (if (empty? inputs)
-        ::pause
+        (assoc env ::signal ::pause)
         (<!
           (go-transitions
            [env
@@ -421,57 +421,50 @@
             ::go-drain
             ::go-write!]))))))
 
-(defn go-envs! [envs control>]
-  (go-loop [envs envs
-            pause true]
-    (if (empty? envs)
-      (if pause ::pause ::success)
-      (let [[signal chan] (async/alts! [(go-env! (first envs)) control>])]
-        (if (= control> chan)
-          (if-not (= signal ::kill)
-            (do
-              (log/warn "Unhandled signal:" signal)
-              (recur envs pause))
-            ::kill)
-          (if (= ::pause signal)
-            (recur (rest envs) pause)
-            (recur (rest envs) false)))))))
+(defn go-envs! [envs]
+  (go-loop [envs-before envs
+            envs-after []]
+    (if (empty? envs-before)
+      envs-after
+      (let [env (<! (go-env! (first envs-before)))]
+        (recur (rest envs-before) (conj envs-after env))))))
+
+(defn into-envs [envs-before envs-after]
+  (into
+    envs-before
+    (for [env envs-after]
+      [(::job-id env) env])))
+
+(defn clear-signals [envs]
+  (map
+    #(dissoc % ::signal)
+    envs))
 
 (defn go-schedule-jobs! [{:dat.sync.db/keys [transact! q deref conn] :keys [envs control>]}]
   ;; TODO: add kill/control chan
   ;; TODO: scheduler
-  ;; TODO: completion signal
   (go-loop []
-    (let [envs (vals @envs)
-          signal (<! (go-envs! envs control>))]
-      (case signal
-       ::pause
-       (do
-         (log/info "Nothing to poll, pausing now")
-         (<! (async/timeout 300))
-         (recur))
-       ::kill
-       (log/info "Kill Signal recieved. Closing job scheduler...")
-
-       (recur)))))
-  ; (go-loop []
-  ;   (let [tsses (q job-tss-query (deref conn))
-  ;         job-id->env @envs]
-  ;     (if (empty? tsses)
-  ;       (do
-  ;         (log/info "No jobs to process, sleeping now")
-  ;         (async/timeout 1000))
-  ;       (doseq [tss tsses]
-  ;         ; (log/info "tss" tss ::job)
-  ;         (let [job-id (::job-id tss)
-  ;               _ (log/info "Processing job:" job-id)
-  ;               env (<! (go-transitions [(or (job-id->env job-id) tss) ::poll! ::go-drain ::go-write!]))]
-  ;           (swap! envs assoc job-id env)
-  ;           (when (polls-closed? env)
-  ;             (log/info "closing job " job-id)
-  ;             (transact! conn [{::job-id job-id
-  ;                               ::complete? true}]))))))
-  ;  (recur)))
+    (let [envs-before (vals @envs)
+          _ (log/debug "Scheduling jobs:" (map ::job-id envs-before))
+          [envs-or-signal ch] (async/alts! [(go-envs! envs-before) control>])]
+      (if (= ch control>)
+        (if (== envs-or-signal ::kill)
+          (log/info "Kill Signal recieved. Closing job scheduler...")
+          (do 
+            (log/warn "Unhandled signal:" envs-or-signal)
+            (recur)))
+        (let [pause? (every? 
+                      #(= (::signal %) ::pause)
+                      envs-or-signal)]
+          (if pause?
+            (do
+              (log/info "Nothing to poll, pausing now")
+              (<! (async/timeout 300))
+              (swap! envs into-envs (clear-signals envs-or-signal)))
+            (do
+              (log/debug "Envs processed successfully")
+              (swap! envs into-envs envs-or-signal)))
+          (recur))))))
 
 (defn gen-uuid []
   (d/squuid))
