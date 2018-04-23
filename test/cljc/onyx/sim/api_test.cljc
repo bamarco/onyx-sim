@@ -278,7 +278,7 @@
         _ (onyx/go-job! job)
         _ (go (async/onto-chan in> [{:hello 1} {:hello 2} {:hello 3}]))]
     (test-async
-      (test-within 1000
+      (test-within 2000
         (go
           (let [outs [(<! out>) (<! out>) (<! out>)]]
             (is 
@@ -315,7 +315,7 @@
     (go (async/onto-chan in2> [{:hello 4} {:hello 5} {:hello 6}]))
 
     (test-async
-      (test-within 1000
+      (test-within 2000
         (go
           (let [outs [(<! out>) (<! out>) (<! out>)]]
             (is
@@ -323,7 +323,7 @@
                 outs
                 [{:hello 1} {:hello 2} {:hello 3}]))))))
     (test-async
-      (test-within 1000
+      (test-within 2000
         (go
           (let [outs [(<! out2>) (<! out2>) (<! out2>)]]
             (is

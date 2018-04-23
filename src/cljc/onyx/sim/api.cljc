@@ -255,14 +255,14 @@
     ; (log/debug "batch-left" batch-left)
     (if (= batch-left 0)
       (do 
-        (log/info "Batch full for" (get-in task-state [:event :onyx.core/task-map :onyx/name]))
-        (log/debug "  segs:" segs)
+        ; (log/debug "Batch full for" (get-in task-state [:event :onyx.core/task-map :onyx/name]))
+        ; (log/debug "  segs:" segs)
         segs)
       (if-let [seg (p/poll! (:pipeline task-state) (lc-hack (:event task-state)) timeout)]
         (recur (conj segs seg) (dec batch-left))
         (do
-          (log/info "Batch ready for" (get-in task-state [:event :onyx.core/task-map :onyx/name]))
-          (log/debug "  segs:" segs)
+          ; (log/debug "Batch ready for" (get-in task-state [:event :onyx.core/task-map :onyx/name]))
+          ; (log/debug "  segs:" segs)
           segs)))))
 
 (defn- go-write-batch! [task-state & {:as opts :keys [timeout max-attempts] :or {timeout 1000 max-attempts 10000}}]
@@ -443,9 +443,10 @@
 (defn go-schedule-jobs! [{:dat.sync.db/keys [transact! q deref conn] :keys [envs control>]}]
   ;; TODO: add kill/control chan
   ;; TODO: scheduler
+  ;; TODO: completed?
   (go-loop []
     (let [envs-before (vals @envs)
-          _ (log/debug "Scheduling jobs:" (map ::job-id envs-before))
+          ; _ (log/debug "Scheduling jobs:" (mapv ::job-id envs-before))
           [envs-or-signal ch] (async/alts! [(go-envs! envs-before) control>])]
       (if (= ch control>)
         (if (== envs-or-signal ::kill)
@@ -458,11 +459,11 @@
                       envs-or-signal)]
           (if pause?
             (do
-              (log/info "Nothing to poll, pausing now")
-              (<! (async/timeout 300))
+              ; (log/debug "Nothing to poll, pausing now")
+              (<! (async/timeout 100))
               (swap! envs into-envs (clear-signals envs-or-signal)))
             (do
-              (log/debug "Envs processed successfully")
+              ; (log/debug "Envs processed successfully")
               (swap! envs into-envs envs-or-signal)))
           (recur))))))
 
