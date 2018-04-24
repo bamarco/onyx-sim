@@ -392,36 +392,53 @@
       (let [env (<transition-env env (first transitions))]
         (recur env (rest transitions))))))
 
-(defn go-job!
-  "Initializes the job and drains the job asynchronously"
-  [job & opts]
-  (go-transitions 
-    [{::event ::init
-      ::job job} 
-     ::poll! 
-     ::go-drain
-     ::go-write!]))
-
 (def job-tss-query
   '[:find [(pull ?tss [::event ::job ::job-id]) ...]
     :where
     [?tss ::complete? false]
     [?tss ::event ::init]])
 
-(defn go-env! [env]
+(defn- go-env! [env]
   (go
-    (let [inputs (poll-plugins! env)]
-      (if (empty? inputs)
-        (assoc env ::signal ::pause)
-        (<!
-          (go-transitions
-           [env
-            {::event ::new-inputs
-             ::inputs inputs}
-            ::go-drain
-            ::go-write!]))))))
+    (if (polls-closed? env)
+      (do
+        ; (log/debug "Polls closed completing job...")
+        (assoc env ::signal ::complete))
+      (let [inputs (poll-plugins! env)]
+        (if (empty? inputs)
+          (assoc env ::signal ::pause)
+          (<!
+            (go-transitions
+              [env
+               {::event ::new-inputs
+                ::inputs inputs}
+               ::go-drain
+               ::go-write!])))))))
 
-(defn go-envs! [envs]
+(defn go-job!
+  "Initializes the job and drains the job asynchronously"
+  [job & opts]
+  (go-loop [env (init job)]
+    (let [{:as env ::keys [signal]} (<! (go-env! env))]
+      (case signal 
+        ::complete
+        env
+
+        ::pause
+        (do
+          (async/timeout 100)
+          (recur env))
+
+        (recur env)))))
+  ; (go-env! (init job)))
+  ; (go-transitions 
+  ;   [{::event ::init
+  ;     ::job job}
+  ;    ::poll!
+  ;    ::go-drain
+  ;    ::go-write!]))
+
+(defn- go-envs! [envs]
   (go-loop [envs-before envs
             envs-after []]
     (if (empty? envs-before)
@@ -429,23 +446,26 @@
       (let [env (<! (go-env! (first envs-before)))]
         (recur (rest envs-before) (conj envs-after env))))))
 
-(defn into-envs [envs-before envs-after]
+(defn- into-envs [envs-before envs-after]
   (into
     envs-before
     (for [env envs-after]
       [(::job-id env) env])))
 
-(defn clear-signals [envs]
-  (map
-    #(dissoc % ::signal)
-    envs))
+(defn- clear-signals [env]
+  (dissoc env ::signal))
+
+(defn- mark-completed [{:as env ::keys [signal]}]
+  (if (= ::complete signal)
+    (assoc env ::completed? true)
+    env))
 
 (defn go-schedule-jobs! [{:dat.sync.db/keys [transact! q deref conn] :keys [envs control>]}]
   ;; TODO: add kill/control chan
   ;; TODO: scheduler
   ;; TODO: completed?
   (go-loop []
-    (let [envs-before (vals @envs)
+    (let [envs-before (remove ::completed? (vals @envs))
           ; _ (log/debug "Scheduling jobs:" (mapv ::job-id envs-before))
           [envs-or-signal ch] (async/alts! [(go-envs! envs-before) control>])]
       (if (= ch control>)
@@ -454,17 +474,18 @@
           (do 
             (log/warn "Unhandled signal:" envs-or-signal)
             (recur)))
-        (let [pause? (every? 
+        (let [pause? (every?
                       #(= (::signal %) ::pause)
-                      envs-or-signal)]
+                      envs-or-signal)
+              envs-after (map mark-completed envs-or-signal)]
           (if pause?
             (do
               ; (log/debug "Nothing to poll, pausing now")
               (<! (async/timeout 100))
-              (swap! envs into-envs (clear-signals envs-or-signal)))
+              (swap! envs into-envs (map clear-signals envs-after)))
             (do
               ; (log/debug "Envs processed successfully")
-              (swap! envs into-envs envs-or-signal)))
+              (swap! envs into-envs envs-after)))
           (recur))))))
 
 (defn gen-uuid []

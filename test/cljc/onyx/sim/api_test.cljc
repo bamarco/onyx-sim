@@ -27,8 +27,9 @@
   [ms ch]
   (go (let [t (async/timeout ms)
             [v ch] (async/alts! [ch t])]
-        (is (not= ch t)
-            (str "Test should have finished within " ms "ms."))
+        (let [timed-out? (= ch t)]
+          (is (not timed-out?)
+              (str "Test should have finished within " ms "ms.")))
         v)))
 
 (defn ^:export seg-identity [seg]
@@ -276,11 +277,21 @@
                                                :in-buf (atom {})
                                                :out> out>})
         _ (onyx/go-job! job)
-        _ (go (async/onto-chan in> [{:hello 1} {:hello 2} {:hello 3}]))]
+        _ (go
+            ; (prn "putting hellos onto chan") 
+            (async/onto-chan in> [{:hello 1} {:hello 2} {:hello 3}]))]
     (test-async
       (test-within 2000
         (go
-          (let [outs [(<! out>) (<! out>) (<! out>)]]
+          ; (prn "Starting go block")
+          (let [out1 (<! out>)
+                ; _ (prn "out1" out1)
+                out2 (<! out>)
+                ; _ (prn "out2" out2)
+                out3 (<! out>)
+                ; _ (prn "out3" out3)
+                outs [out1 out2 out3]]
+            ; (prn "got all my outs")
             (is 
               (= outs 
                 [{:hello 1} {:hello 2} {:hello 3}]))))))))
