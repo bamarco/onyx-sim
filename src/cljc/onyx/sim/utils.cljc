@@ -5,41 +5,41 @@
 ;;             #?(:clj [clojure.core.async :refer [<! chan go]]
 ;;                :cljs [clojure.core.async :refer [<! chan]])
             #?(:clj [clojure.java.io :as io]))
-  #?(:cljs (:require-macros [onyx.sim.utils :refer [xfn stepper]]
+  #?(:cljs (:require-macros [onyx.sim.utils :refer [xfn stepper]])))
 ;;              [cljs.core.async.macros :refer [go]]
-                            )))
+                            
 
 ;;;
 ;;; !!!: This is an experimental volatile file. Do not expect it to stay the same.
 ;;;
 
 #?(:clj
-(defn edn-seq
-  "Returns the objects from stream as a lazy sequence."
-  ([]
-     (edn-seq *in*))
-  ([stream]
-     (edn-seq {} stream))
-  ([opts stream]
-     (lazy-seq (cons (reader/read opts stream) (edn-seq opts stream))))))
+   (defn edn-seq
+     "Returns the objects from stream as a lazy sequence."
+     ([]
+      (edn-seq *in*))
+     ([stream]
+      (edn-seq {} stream))
+     ([opts stream]
+      (lazy-seq (cons (reader/read opts stream) (edn-seq opts stream))))))
 
 #?(:clj
-(defn swallow-eof
-  "Ignore an EOF exception raised when consuming seq."
-  [seq]
-  (-> (try
-        (cons (first seq) (swallow-eof (rest seq)))
-        (catch java.lang.RuntimeException e
-          (when-not (= (.getMessage e) "EOF while reading")
-            (throw e))))
-      lazy-seq)))
+   (defn swallow-eof
+     "Ignore an EOF exception raised when consuming seq."
+     [seq]
+     (-> (try
+           (cons (first seq) (swallow-eof (rest seq)))
+           (catch java.lang.RuntimeException e
+             (when-not (= (.getMessage e) "EOF while reading")
+               (throw e))))
+         lazy-seq)))
 
 #?(:clj
-(defn edn-read-file [filename]
-  (if (io/.exists (io/as-file filename))
-    (with-open [stream (java.io.PushbackReader. (io/reader filename))]
-      (doall (swallow-eof (edn-seq stream))))
-    (println (str "File does not exist: " filename)))))
+   (defn edn-read-file [filename]
+     (if (io/.exists (io/as-file filename))
+       (with-open [stream (java.io.PushbackReader. (io/reader filename))]
+         (doall (swallow-eof (edn-seq stream))))
+       (println (str "File does not exist: " filename)))))
 
 (defonce last-tempid (atom 0))
 (defn gen-tempid!
@@ -55,21 +55,21 @@
   (if (satisfies? #?(:cljs IDeref :clj clojure.lang.IDeref) val-or-atom) @val-or-atom val-or-atom))
 
 #?(:clj
-(defmacro xfn
-  "Simple transducing function."
-  [bindings & body]
-  `(map (fn ~bindings ~@body))))
+   (defmacro xfn
+     "Simple transducing function."
+     [bindings & body]
+     `(map (fn ~bindings ~@body))))
 
 #?(:clj
-(defmacro stepper
-  "Allows you to quickly create completing-style transducers."
-  [[step acc in] & body]
-  `(fn [~step]
-    (fn
-      ([] (~step))
-      ([~acc] (~step ~acc))
-      ([~acc ~in]
-       ~@body)))))
+   (defmacro stepper
+     "Allows you to quickly create completing-style transducers."
+     [[step acc in] & body]
+     `(fn [~step]
+       (fn
+         ([] (~step))
+         ([~acc] (~step ~acc))
+         ([~acc ~in]
+          ~@body)))))
 
 (defn expand
   "When predicate is true, push elements into the stream instead of the element."
@@ -94,13 +94,13 @@
 ;;   coll [transucers ...]* [sequences ...]+
 ;;
 (defn cat-into
-  "Any number of transducers and sequences concatonated into one sequence."
+  "Any number of transducers and sequences concatonated into one collection."
   [coll & xfns-and-seqs]
   (let [{xfns true
          seqs false} (if (fn? (first xfns-and-seqs))
                        (group-by fn? xfns-and-seqs)
-                       {false xfns-and-seqs}
-                       )]
+                       {false xfns-and-seqs})]
+                       
     (into coll
           (apply comp (into [cat] xfns))
           seqs)))
@@ -120,7 +120,7 @@
 (defn minto
   "Like mapply, but for vectors. ???: Not robust needs upgrades."
   ([in from]
-    (into in cat from))
+   (into in cat from))
   ([in xform from]
    (into in (comp cat xform) from)))
 

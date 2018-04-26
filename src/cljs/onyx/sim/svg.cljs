@@ -1,21 +1,19 @@
 (ns onyx.sim.svg
   (:require [taoensso.timbre :as log]
             [clojure.spec.alpha :as s]
-            [onyx.sim.flui :as flui]
-;;             #?(:cljs [vega-tools.core :refer [validate-and-parse]])
-;;             #?(:cljs [cljsjs.vega])
-            #?(:clj [onyx.sim.utils :refer [educe xfn ppr-str]]
-               :cljs [onyx.sim.utils :refer [educe ppr-str] :refer-macros [xfn]])
-            #?(:clj [clojure.math.numeric-tower :refer [sqrt]])
-            #?(:clj  [clojure.core.match :refer [match]]
-               :cljs [cljs.core.match :refer-macros [match]])))
+            [re-com.core :as re-com]
+            [onyx.sim.ui :as ui]
+;;             [vega-tools.core :refer [validate-and-parse]]
+;;             [cljsjs.vega]
+            [onyx.sim.utils :refer [educe xfn ppr-str]]
+            [clojure.core.match :refer-macros [match]]))
 
 ;;;
 ;;; !!!: This is an experimental volatile file. Do not expect it to stay the same.
 ;;;
 
 
-#?(:cljs (def sqrt (.-sqrt js/Math)))
+(def sqrt (.-sqrt js/Math))
 
 (defonce scale 2.0)
 (defonce shape-d (* scale 20))
@@ -31,8 +29,8 @@
   (let [svg (into svg {:points (points->js-str points)})
         tag (:svg/type svg)
         body (:svg/body svg)
-        opts svg;;(select-keys svg (:svg/keys svg))
-        ]
+        opts svg];;(select-keys svg (:svg/keys svg))
+        
     (if tag
       [tag opts body]
       [:text {:x 0 :y 0 :font-size 14} (str "no ->svg tag for ")])))
@@ -70,7 +68,7 @@
 
 (defn +normalize []
   (xfn [{:as svg :keys [width]}]
-         (assoc svg :height width)))
+       (assoc svg :height width)))
 
 (defn +shape [tag]
   (xfn [svg] (assoc svg :svg/type tag)))
@@ -89,19 +87,19 @@
 (defn +zebra [& colors]
   (fn [step]
     (let [mod-current (volatile! 0)]
-    (fn
-      ([] (step))
-      ([acc] (step acc))
-      ([acc element]
+     (fn
+       ([] (step))
+       ([acc] (step acc))
+       ([acc element]
         (let [modi @mod-current]
-        (if [modi < (count colors)]
-          (vreset! mod-current (inc modi))
-          (vreset! mod-current 0))
+         (if [modi < (count colors)]
+           (vreset! mod-current (inc modi))
+           (vreset! mod-current 0))
           ;; ???: How should we handle differences between underlying container?
-          (step acc (assoc-in element
-                              [:fill] ;; svg
+         (step acc (assoc-in element
+                             [:fill] ;; svg
                               ;; [:style :background-color] ;; div
-                              (get colors modi)))))))))
+                             (get colors modi)))))))))
 
 (defn x>rect []
   (comp
@@ -143,9 +141,9 @@
             :svg/body n
             :x cx ;; ???: calc (- cx text-width) need to do this without using a js str
             :y cy
-            :font-size r
-            }
-           ))))
+            :font-size r}))))
+            
+           
 
 (def dark-outline
   (xfn [svg]
@@ -195,21 +193,21 @@
 
 (def v-quad
   [v-square
-  (educe
-    (comp
-      (x>number-text 4)
-      (+fill "White")
-      no-outline)
-    v-shape)])
+   (educe
+     (comp
+       (x>number-text 4)
+       (+fill "White")
+       no-outline)
+     v-shape)])
 
 (def padding 5)
 
 (defn svg-orphan [{:as svg :keys [bound-width bound-height]} & more]
-  (flui/box
+  (re-com/box
     :child
     (into [:svg {:width bound-width :height bound-height} (->svg svg)]
-          (map ->svg more)
-          )))
+          (map ->svg more))))
+          
 
 (defn sides->shape [sides]
   (case sides
@@ -234,14 +232,14 @@
 (defn svg-seg-boxer
   "Converts segments into individual svg elements."
   [& segs]
-  [flui/h-box :children
+  [re-com/h-box :children
    (into
      []
      (comp
        (map seg->svg-spec)
        (map ->svg)
        (map (fn [{:as svg :keys [bound-width bound-height]}]
-              [flui/box
+              [re-com/box
                :child
                [:svg {:width bound-width :height bound-height}]]))))
    segs])
@@ -251,7 +249,7 @@
   [& segs]
   (let [total-bound-width (transduce (map :bound-width) + segs)
         total-bound-height (transduce (map :bound-height) max 0 segs)]
-    [flui/box :child
+    [re-com/box :child
      (into
        [:svg {:width total-bound-width
               :height total-bound-height}]
@@ -287,22 +285,22 @@
                     :horizontal [+ max]
                     :vertical [max +])
           width (volatile! 0)
-          height (volatile! 0)
-          ]
-    (fn
-      ([] (step))
-      ([acc] (step acc))
-      ([acc {:as seg :keys [bound-width bound-height]}]
-       (let [bw (wf @width bound-width)
-             bh (hf @height bound-height)
-             changed? (or (= @width bw) (= bh @height))
-             acc (if changed? (step acc {:svg/type :container
-                                         :html/tag :svg
-                                         :width bw
-                                         :height bh}) acc)]
-         (vreset! width bw)
-         (vreset! height bh)
-         (step acc seg)))))))
+          height (volatile! 0)]
+          
+     (fn
+       ([] (step))
+       ([acc] (step acc))
+       ([acc {:as seg :keys [bound-width bound-height]}]
+        (let [bw (wf @width bound-width)
+              bh (hf @height bound-height)
+              changed? (or (= @width bw) (= bh @height))
+              acc (if changed? (step acc {:svg/type :container
+                                          :html/tag :svg
+                                          :width bw
+                                          :height bh}) acc)]
+          (vreset! width bw)
+          (vreset! height bh)
+          (step acc seg)))))))
 
 (defn +svg-spread [& {:keys [align] :or {align :horizontal}}]
   (fn [step]
@@ -353,9 +351,9 @@
 
 (defn +boxed []
   (map (fn [svg-hiccup]
-         [flui/box
+         [re-com/box
           :child
-          (or svg-hiccup flui/none)])))
+          (or svg-hiccup ui/none)])))
 
 ;; (def seg->svg2
 ;;   (comp
@@ -370,18 +368,18 @@
     (+svg-grow-bound :align :horizontal)
     (+svg-spread)
     (+svgrgggl)
-    (+boxed)
+    (+boxed)))
 ;;     (map (fn [seg]
-;;            [flui/p (str seg)]))
-    ))
+;;            [re-com/p (str seg)]))
+    
 
 ;; (defn svg-seg-reducer
-;;   ([] {:html/tag flui/box
+;;   ([] {:html/tag re-com/box
 ;;        :child {:db/id 1
 ;;                :html/tag :svg
 ;;                :width 0
 ;;                :height 0}}
-;;    [flui/box :child [:svg {:width 0 :height 0}]])
+;;    [re-com/box :child [:svg {:width 0 :height 0}]])
 ;;   ([box svg] (transact! [[:db/add 1 :html/content ]])
 
 ;;   ))
@@ -389,7 +387,7 @@
 ;; tasks
 (defn ^:export render-match
     ([] [])
-    ([dom] (flui/h-box :children dom))
+    ([dom] (re-com/h-box :children dom))
     ([dom seg]
      ;; FIXME: I definitely am doing this wrong. I need to figure out which parts need to be a transducer and which need to be the reducing function. You can tell by the travesty of a call that is in sim.cljc: (render (reduce render (render) outputs))
      ;; ???: how do we match containers to representations that go together. It seems like the container is the accumulation and the representations are the stream of inputs.
@@ -399,13 +397,13 @@
      (conj dom
            (match
              [seg]
-             [{:transactions transactions}] (flui/box :child [:p (str "TXS: " (pr-str transactions))])
-             [{:type :datom :eav [e a v]}] (flui/box :child [:p (str "EAV [" e " " a " " v "]")])
-             [{:type :instance-sides :v v}] (flui/box :child [:p (str "SIDES: " v)])
+             [{:transactions transactions}] (re-com/box :child [:p (str "TXS: " (pr-str transactions))])
+             [{:type :datom :eav [e a v]}] (re-com/box :child [:p (str "EAV [" e " " a " " v "]")])
+             [{:type :instance-sides :v v}] (re-com/box :child [:p (str "SIDES: " v)])
              [{:type :instance-shape :v :square}] (svg-orphan v-square)
              [{:type :instance-shape :v :circle}] (svg-orphan v-circle)
              [{:type :instance-shape :v :rect}] (svg-orphan v-rect)
              [{:type :instance-shape :v :triangle}] (svg-orphan v-triangle)
-             [{:type :instance-shape :v v}] (flui/box :child [:p (str "SHAPE: " v)]) ;; TODO: make a generic shape with a label equal to the keyword v
+             [{:type :instance-shape :v v}] (re-com/box :child [:p (str "SHAPE: " v)]) ;; TODO: make a generic shape with a label equal to the keyword v
              [{:type :instance-4sides}] (apply svg-orphan v-quad)
-             :else (flui/box :child [:p "fail"])))))
+             :else (re-com/box :child [:p "fail"])))))

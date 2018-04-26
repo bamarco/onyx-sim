@@ -38,25 +38,25 @@
     :onyx/type :input
 ;;     :onyx/medium :core.async
 ;;     :onyx/max-peers 1
-    :onyx/batch-size onyx-batch-size
+    :onyx/batch-size onyx-batch-size}
 ;;     :onyx/doc "Reads segments from a core.async channel"
-    }
+    
 
    {:onyx/name :identity
     :onyx/fn ::my-identity
     :onyx/type :function
-    :onyx/batch-size onyx-batch-size
+    :onyx/batch-size onyx-batch-size}
 ;;     :parameterized.core/k 42
-    }
+    
 
    {:onyx/name :out
 ;;     :onyx/plugin :onyx.plugin.core-async/output
     :onyx/type :output
 ;;     :onyx/medium :core.async
 ;;     :onyx/max-peers 1
-    :onyx/batch-size onyx-batch-size
+    :onyx/batch-size onyx-batch-size}])
 ;;     :onyx/doc "Writes segments to a core.async channel"
-    }])
+    
 
 (def flow-conditions
   [{:flow/from :identity
@@ -87,7 +87,7 @@
    :onyx.core/workflow workflow
    :onyx.core/flow-conditions flow-conditions
    :onyx.sim/title "Flow Short Circuit" ;; ???: how to break up sim vs job?
-   :onyx/doc "An example of flow conditions with short circuit enabled."
+   :onyx/doc "An example of flow conditions with short circuit enabled."})
 ;;    :onyx.core/lifecycles lifecycles
-   })
+   
 

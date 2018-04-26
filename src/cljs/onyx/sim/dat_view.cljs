@@ -1,7 +1,7 @@
 (ns onyx.sim.dat-view
   (:require [taoensso.timbre :as log]
             [onyx.sim.api :as onyx]
-            [onyx.sim.flui :as flui]
+            [re-com.core :as re-com]
             [datascript.core :as d]
             [posh.reagent :as posh]
             [onyx.sim.core :as sim]
@@ -95,7 +95,7 @@
   {:lifecycle/before-task-start inject-meta})
 
 (defn ^:export sim-render [outputs]
-  [flui/h-box
+  [re-com/h-box
    :children
    (mapv :dat.view.rep/component outputs)])
 
@@ -148,15 +148,15 @@
                       child])
                    layout)]
 ;;     (log/info "dat-view-box")
-    [flui/v-box
+    [re-com/v-box
      :children
      [
-;;       [flui/button
+;;       [re-com/button
 ;;        :label "Convert to Simulator"
 ;;        :on-click #(d/transact! conn [[:db.fn/call render-segments->debug-sim sim layout "Spawned Sim"]])]
       [(case direction
-         :horizontal flui/h-box
-         flui/v-box)
+         :horizontal re-com/h-box
+         re-com/v-box)
        :style style
        :children (vec children)]]]))
 
@@ -173,7 +173,7 @@
   (assoc
     seg
     :dat.view.rep/component
-    [flui/label :label label]))
+    [re-com/label :label label]))
 
 (defn ^:export checkbox [sys
                          {:as seg :keys [dat.view.rep/label
@@ -184,7 +184,7 @@
     (assoc
       seg
       :dat.view.rep/component
-      [flui/checkbox
+      [re-com/checkbox
        :model toggled?
        :label label
        :on-change #(dispatch! sys (into default-event seg))])))
@@ -195,7 +195,7 @@
   (assoc
     seg
     :dat.view.rep/component
-    [flui/input-text
+    [re-com/input-text
      :model label
      :on-change (partial dispatch! sys seg)]))
 
@@ -203,7 +203,7 @@
   (assoc
     seg
     :dat.view.rep/component
-    [flui/p (str "Unknown representation:" seg)]))
+    [re-com/p (str "Unknown representation:" seg)]))
 
 
 

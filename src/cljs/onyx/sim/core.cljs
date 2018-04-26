@@ -7,14 +7,13 @@
             [clojure.core.async :as async]
             [clojure.spec.alpha :as s]
             [onyx.sim.event :as event]
-            [onyx.sim.utils :as utils :refer [cat-into ppr-str mapply]]
             [datascript.core :as d]
-            [onyx.sim.dat-view-render :as dat.view]
             [onyx.sim.examples.flow-short-circuit]
             [onyx.sim.examples.hello]
             [posh.reagent :as posh]
             [reagent.ratom :as ratom]
-            [reagent.core :as r :refer [atom]]))
+            [reagent.core :as r :refer [atom]]
+            [onyx.sim.ui :as ui]))
 
 ;; TODO: import uris should be a drop-down
 
@@ -44,18 +43,6 @@
    ::import-uris ["verbose.edn" "route.edn" "example.edn"]
    ::running? false
    ::hidden-tasks #{}})
-
-(defn code
-  "Eventually a pretty lookin code block with syntax highlighting."
-  [& {:as args :keys [code child pr-fn] cl :class}]
-  ;; TODO: word-wrap and line numbers
-  ;; TODO: syntax highlighting
-  (let [args (-> args
-                  (dissoc :code :pr-fn)
-                  (assoc :class (str "rc-code " cl)))
-        code ((or pr-fn ppr-str) code)]
-    (assert (not child) (str "Code should not have a :child element. Got " child))
-    (mapply re-com/box :child [:code [:pre code]] args)))
 
 (defn- ds->onyx [sim-job]
   (-> sim-job
@@ -423,7 +410,7 @@
       [render inbox]]]))
 
 (defn- code-render [code]
-  [code :code code])
+  [ui/code :code code])
 
 (defn- pretty-task-box [conn {:as seg ::keys [sim task-name]}]
   (let [env @(pull-env conn sim)
@@ -480,7 +467,7 @@
 (defn- summary [conn {::keys [sim summary-fn]}]
   (let [summary-fn (or summary-fn onyx/env-summary)
         env @(pull-env conn sim)]
-    [code :class "onyx-panel" :code (summary-fn env)]))
+    [ui/code :class "onyx-panel" :code (summary-fn env)]))
 
 (defn- raw-env [conn {:as seg ::keys [sim]}]
   (let [only-summary? (control/control-attr conn ::only-summary? :control/toggled?)]
@@ -652,7 +639,7 @@
                         (fn []
                           @conn))]
     (fn [conn]
-      [code
+      [ui/code
        :code @the-whole-conn
        :pr-fn pr-str])))
 
@@ -728,77 +715,3 @@
       ;  [control/nav-bar conn ::nav]]]
      [re-com/gap :size ".25rem"]
      [content-view conn]]]))
-
-; (defn aliasify [{::keys [alias]} segment]
-;   (into
-;     segment
-;     (for [[aname path] alias]
-;       [aname 
-;        (if (sequential? path)
-;          (get-in segment path)
-;          (aliasify {::alias path} segment))])))
-
-; (defn ^:export nav-select [seg]
-;   ;;TODO: event fx
-;   seg)
-
-; (def nav-select-event
-;   {:onyx.core/catalog
-;    [{:onyx/name   ::event-actions
-;      :onyx/type   :output
-;      :onyx/plugin ::nav-select}]
-   
-;    :onyx.core/workflow
-;    [[::event-args ::event-actions]]})
-
-; (def nav-job
-;   [{:onyx.core/catalog
-;     [{:onyx/name   ::selected-nav-q
-;       :onyx/type   :input
-;       :onyx/plugin :dat.sync.plugin/query
-;       :dat.sync/q  '[:find ?selected-nav
-;                      :where
-;                      [_ :onyx.sim.settings/selected-nav ?selected-nav]]}
-;      {:onyx/name    ::attrs-in
-;       :onyx/plugin  :onyx.plugin/seq
-;       :onyx.plugin.seq/seq [{::label-attr ::label}
-;                             {::id-attr    ::id}
-;                             {::on-change  nav-select-event}]}
-;      {:onyx/name      ::selected-nav-alias
-;       :onyx/type      :function
-;       :onyx/fn        ::aliasify
-;       :dat.view/alias {:dat.view/chosen [:?selected-nav]}}
-;      {:onyx/name    ::nav-choices-q
-;       :onyx/type    :input
-;       :onyx/plugin  :dat.sync.plugin/query
-;       :dat.sync/q   '[:find ?title ?sim
-;                       :where
-;                       [?sim ::title    ?title]
-;                       [?sim :oynx/type ::sim]]}
-;      {:onyx/name        ::nav-choices-alias
-;       :onyx/type        :function
-;       :onyx/fn          ::aliasify
-;       :dat.view/alias {::label [:?title]
-;                        ::id    [:?sim]}}
-;      dat.view/mount-task]
-
-;     :onyx.core/workflow
-;     [[::selected-nav-q     ::selected-nav-alias]
-;      [::selected-nav-alias ::render]
-;      [::nav-choices        ::nav-choices-alias]
-;      [::nav-choices-alias  :dat.view.render/mount]
-;      [::attrs-in           :dat.view.render/mount]]}])
-
-; (defn sim-selector2 [{:as sys :keys [dat.sync.db/conn]}]
-;   (let [segments [{:dat.view.render/type :dat.view.render/nav}
-;                   {:dat.view/choice {:dat.view/label "One"
-;                                      :dat.view/id 1}}
-;                   {:dat.view/choice {:dat.view/label "Two"
-;                                      :dat.view/id 2}}
-;                   {:dat.view/choice {:dat.view/label "Three"
-;                                      :dat.view/id 3}}
-;                   {:dat.view/id-attr {:dat.view/attr :dat.view/id}}
-;                   {:dat.view/label-attr {:dat.view/attr :dat.view/label}}
-;                   {:dat.view/on-change nav-select-event}
-;                   {:dat.view/chosen {:dat.view/id 1}}]]
-;     [dat.view/quick-render segments]))

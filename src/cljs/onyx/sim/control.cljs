@@ -1,6 +1,7 @@
 (ns onyx.sim.control
   (:require [taoensso.timbre :as log]
             [re-com.core :as re-com]
+            [onyx.sim.ui :as ui]
             [onyx.sim.event :as event]
             [onyx.sim.utils :as utils :refer [cat-into]]
             [datascript.core :as d]
@@ -221,4 +222,4 @@
 (defn when-show? [[component-fn conn control-name]]
   (if (control-attr conn control-name :control/show?)
     [component-fn conn control-name]
-    re-com/none))
+    ui/none))
