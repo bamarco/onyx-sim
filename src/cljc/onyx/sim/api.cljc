@@ -1,19 +1,19 @@
 (ns onyx.sim.api
-  (:require [taoensso.timbre :as log]
-            [onyx-local-rt.api :as onyx]
-            [onyx-local-rt.impl :as i]
-            [reagent.core :as r]
-            [onyx.static.util :refer [kw->fn]]
-            [onyx.plugin.protocols :as p]
-            [onyx.plugin.core-async]
-            [datascript.core :as d]
-            [clojure.spec.alpha :as s]
-            [onyx.sim.log.zookeeper :as zlog]
-            [onyx.extensions :as extensions]
-            [clojure.core.async.impl.protocols :refer [WritePort ReadPort Channel closed?]]
-            [clojure.core.async :as async :refer [go go-loop <! >!]]
-            [onyx.sim.utils #?@(:clj  (:refer [xfn])
-                                :cljs (:refer-macros [xfn]))])
+  (:require 
+    [taoensso.timbre :as log]
+    [com.stuartsierra.component :as component]
+    [onyx-local-rt.api :as onyx]
+    [onyx-local-rt.impl :as i]
+    [reagent.core :as r]
+    [onyx.static.util :refer [kw->fn]]
+    [onyx.plugin.protocols :as p]
+    [onyx.plugin.core-async]
+    [datascript.core :as d]
+    [clojure.spec.alpha :as s]
+    [onyx.sim.log.zookeeper :as zlog]
+    [onyx.extensions :as extensions]
+    [clojure.core.async.impl.protocols :refer [WritePort ReadPort Channel closed?]]
+    [clojure.core.async :as async :refer [go go-loop <! >!]])
   #?(:cljs
      (:require-macros [onyx.sim.api :refer [<transition-env]])))
 
@@ -402,7 +402,7 @@
   (go
     (if (polls-closed? env)
       (do
-        ; (log/debug "Polls closed completing job...")
+        (log/debug "Polls closed completing job...")
         (assoc env ::signal ::complete))
       (let [inputs (poll-plugins! env)]
         (if (empty? inputs)
@@ -423,12 +423,10 @@
       (case signal 
         ::complete
         env
-
         ::pause
         (do
           (async/timeout 100)
           (recur env))
-
         (recur env)))))
   ; (go-env! (init job)))
   ; (go-transitions 
@@ -466,7 +464,7 @@
   ;; TODO: completed?
   (go-loop []
     (let [envs-before (remove ::completed? (vals @envs))
-          ; _ (log/debug "Scheduling jobs:" (mapv ::job-id envs-before))
+          _ (log/debug "Scheduling jobs:" (mapv ::job-id envs-before))
           [envs-or-signal ch] (async/alts! [(go-envs! envs-before) control>])]
       (if (= ch control>)
         (if (== envs-or-signal ::kill)
@@ -480,11 +478,11 @@
               envs-after (map mark-completed envs-or-signal)]
           (if pause?
             (do
-              ; (log/debug "Nothing to poll, pausing now")
+              (log/debug "Nothing to poll, pausing now")
               (<! (async/timeout 100))
               (swap! envs into-envs (map clear-signals envs-after)))
             (do
-              ; (log/debug "Envs processed successfully")
+              (log/debug "Envs processed successfully")
               (swap! envs into-envs envs-after)))
           (recur))))))
 
@@ -509,3 +507,34 @@
     ;     ::complete? false
     ;     ::job-id job-id}]))
     true))
+
+(def schema 
+  {:onyx.sim.api/job-id {:db/unique :db.unique/identity}})
+
+(defn- create-conn []
+  {:dat.sync.db/transact! d/transact!
+   :dat.sync.db/q d/q
+   :dat.sync.db/pull d/pull
+   :dat.sync.db/deref deref
+   :dat.sync.db/conn (d/create-conn schema)})
+
+(defrecord OnyxSimulator [envs control> conn]
+  component/Lifecycle
+  (start [component]
+    (let [simulator
+          {:control> (or control> (async/chan))
+           :conn     (or conn (create-conn))
+           :envs     (or envs (atom {}))}]
+      (go-schedule-jobs! simulator)
+      (into component simulator)))
+  (stop [component]
+    (async/onto-chan control> [::kill])
+    (assoc component
+      :envs nil
+      :control> nil)))
+
+(defn create-sim 
+  ([]
+   (create-sim {}))
+  ([opts]
+   (map->OnyxSimulator opts)))

@@ -1,6 +1,6 @@
 (ns onyx.sim.control
   (:require [taoensso.timbre :as log]
-            [onyx.sim.flui :as flui]
+            [re-com.core :as re-com]
             [onyx.sim.event :as event]
             [onyx.sim.utils :as utils :refer [cat-into]]
             [datascript.core :as d]
@@ -60,26 +60,26 @@
 ;; controls -> hiccup
 ;;
 (defn field-label [conn control-name]
-  [flui/label
+  [re-com/label
    :class "field-label"
    :label (control-attr conn control-name :control/label)])
 
 (defn action-button [conn control-name]
   (let [{:keys [control/disabled? control/action control/label dat.view/event]} (pull-control conn control-name)]
-    [flui/button
+    [re-com/button
      :label label
      :disabled? disabled?
      :on-click (partial event/dispatch! conn event)]))
 
 (defn toggle-button [conn control-name]
   (let [{:keys [control/label control/toggle-label control/toggled? dat.view/event]} (pull-control conn control-name)]
-    [flui/button
+    [re-com/button
      :label (if toggled? (or toggle-label label) label)
      :on-click (partial event/dispatch! conn event)]))
 
 (defn toggle-checkbox [conn control-name]
   (let [{:keys [control/disabled? control/label control/toggle-label control/toggled? dat.view/event]} (pull-control conn control-name)]
-    [flui/checkbox
+    [re-com/checkbox
      :model toggled?
      :disabled? disabled?
      :label (if toggled? (or toggle-label label) label)
@@ -89,12 +89,12 @@
 ;;   (log/info "selection-list" control-name)
   (let [{:keys [control/label control/choices control/chosen dat.view/event control/id-fn control/label-fn]} (pull-control conn control-name)]
 ;;     (log/info "label:" label "chosen:" chosen "choices:" choices)
-    [flui/v-box
+    [re-com/v-box
      :children
-     [[flui/label
+     [[re-com/label
        :class "field-label"
        :label label]
-      [flui/selection-list
+      [re-com/selection-list
        :choices choices
        :model chosen
        :id-fn id-fn
@@ -103,24 +103,24 @@
 
 (defn indicator-label [conn control-name]
   (let [{:keys [control/label control/display]} (pull-control conn control-name)]
-    [flui/h-box
+    [re-com/h-box
      :gap "1ch"
      :children
-     [[flui/label
+     [[re-com/label
        :class "field-label"
        :label label]
-      [flui/label
+      [re-com/label
        :label display]]]))
 
 (defn active-logo [conn control-name]
   (let [{:keys [control/label control/img control/active?]} (pull-control conn control-name)]
     ;; FIXME: abrupt ending animation
-    [flui/h-box
+    [re-com/h-box
       :class "active-logo"
       :children
-      [[flui/box :child [:img {:class (str "active-logo-img" (when active? " spinning"))
-                               :src img}]]
-       [flui/label :label label]]]))
+      [[re-com/box :child [:img {:class (str "active-logo-img" (when active? " spinning"))
+                                 :src img}]]
+       [re-com/label :label label]]]))
 
 (defn ^:export simple-concat [db {:as seg :keys [dat.view/entity dat.view/attr dat.view/inputs]}]
   (for [input inputs]
@@ -151,7 +151,7 @@
   (let [selected (or selected (get (d/entity conn entity) attr))
         label-fn (or label-fn :e/name)
         id-fn (or id-fn :db/id)]
-    [flui/radio-button
+    [re-com/radio-button
      :model (id-fn selected)
      :value (id-fn option)
      :label (label-fn option)
@@ -165,8 +165,8 @@
 
 (defn ^:export boxer [system {:as control :keys [dat.view/direction dat.view/children]}]
   (let [box (case direction
-              :dat.view.container/horizontal flui/h-box
-              flui/v-box)]
+              :dat.view.container/horizontal re-com/h-box
+              re-com/v-box)]
     [box
      :children
      (:dat.view/component children)]))
@@ -192,7 +192,7 @@
         id-fn (or id-fn :id)
         choice (get choices index)]
     ;; ???: assert only one chosen
-    [flui/radio-button
+    [re-com/radio-button
      :model (first chosen)
      :value (id-fn choice)
      :label (label-fn choice)
@@ -205,7 +205,7 @@
 ;;   (log/info "nav-bar" control-name " chosen: " chosen " choices: " choices)
     ;; ???: should the or-clause for id-fn be part of compile-controls?
     ;; ???: maybe a more generic way to do the bridging. drop nil arguments?
-    [flui/horizontal-bar-tabs
+    [re-com/horizontal-bar-tabs
      :tabs choices
      :model chosen ;; ???: treat chosen as a set always? distinction for choose one vs choose many?
      :id-fn id-fn
@@ -214,11 +214,11 @@
 
 (defn indicator-display [conn control-name]
   (let [{:keys [:control/display]} (pull-control conn control-name)]
-    [flui/p display]))
+    [re-com/p display]))
 
 
 ;; FIXME: should be middleware/interceptors so you can use lots of this style
 (defn when-show? [[component-fn conn control-name]]
   (if (control-attr conn control-name :control/show?)
     [component-fn conn control-name]
-    flui/none))
+    re-com/none))

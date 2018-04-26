@@ -1,13 +1,13 @@
 (ns onyx.sim.core
   (:require [taoensso.timbre :as log]
             [onyx.sim.api :as onyx]
-            [onyx.sim.flui :as flui]
+            [re-com.core :as re-com]
             [onyx.sim.control :as control]
             [onyx.sim.svg :as svg]
             [clojure.core.async :as async]
             [clojure.spec.alpha :as s]
             [onyx.sim.event :as event]
-            [onyx.sim.utils :as utils :refer [cat-into]]
+            [onyx.sim.utils :as utils :refer [cat-into ppr-str mapply]]
             [datascript.core :as d]
             [onyx.sim.dat-view-render :as dat.view]
             [onyx.sim.examples.flow-short-circuit]
@@ -17,8 +17,6 @@
             [reagent.core :as r :refer [atom]]))
 
 ;; TODO: import uris should be a drop-down
-;; TODO: index.html -> hiccup (prevents resources conflict with downstream projects)
-;; ???: Should there be some kind of asynchronous job runner that caches compiled jobs? If so how do we get async to interface with react?
 
 ;;
 ;; UTILS
@@ -46,6 +44,18 @@
    ::import-uris ["verbose.edn" "route.edn" "example.edn"]
    ::running? false
    ::hidden-tasks #{}})
+
+(defn code
+  "Eventually a pretty lookin code block with syntax highlighting."
+  [& {:as args :keys [code child pr-fn] cl :class}]
+  ;; TODO: word-wrap and line numbers
+  ;; TODO: syntax highlighting
+  (let [args (-> args
+                  (dissoc :code :pr-fn)
+                  (assoc :class (str "rc-code " cl)))
+        code ((or pr-fn ppr-str) code)]
+    (assert (not child) (str "Code should not have a :child element. Got " child))
+    (mapply re-com/box :child [:code [:pre code]] args)))
 
 (defn- ds->onyx [sim-job]
   (-> sim-job
@@ -373,10 +383,10 @@
     ;; ???: dump segments button
     ;; ???: feedback segments
     (when outputs
-      [flui/v-box
+      [re-com/v-box
        :class "onyx-outbox"
        :children
-       [[flui/title
+       [[re-com/title
          :label "Outbox"
          :level :level3]
         [render outputs]]])))
@@ -387,17 +397,17 @@
         @(posh/pull conn '[::import-uris
                            {::env [*]}] sim)
         inbox (get-in tasks [task-name :inbox])]
-    [flui/v-box
+    [re-com/v-box
      :class "onyx-inbox"
      :children
-     [[flui/h-box
+     [[re-com/h-box
        :gap ".5ch"
        :align :center
        :children
-       [[flui/title
+       [[re-com/title
          :label "Inbox"
          :level :level3]
-        [flui/input-text
+        [re-com/input-text
          :model (str (first import-uris))
          :on-change (partial
                      event/dispatch!
@@ -405,7 +415,7 @@
                      {:dat.view/handler :onyx.sim.event/simple-value
                       :dat.view/entity sim
                       :dat.view/attr ::import-uri})]
-        [flui/button
+        [re-com/button
          :label "Import Segments"
          :on-click #(event/raw-dispatch! conn {:dat.view/handler :onyx.sim.event/import-segments
                                                ::sim sim
@@ -413,9 +423,7 @@
       [render inbox]]]))
 
 (defn- code-render [code]
-  [flui/code
-   :code
-   code])
+  [code :code code])
 
 (defn- pretty-task-box [conn {:as seg ::keys [sim task-name]}]
   (let [env @(pull-env conn sim)
@@ -427,21 +435,21 @@
         render-fn (if render-segments?
                     (or local-render render code-render)
                     code-render)]
-    [flui/v-box
+    [re-com/v-box
      :class "onyx-task onyx-panel"
      :gap ".25rem"
      :children
-     [(flui/h-box
+     [(re-com/h-box
        :gap ".5ch"
        :align :center
        :style {:background-color (get task-colors task-type)
                :border-radius :5px}
        :children
-       [(flui/gap :size ".5ch")
-        (flui/title
+       [(re-com/gap :size ".5ch")
+        (re-com/title
          :label task-name
          :level :level2)
-        [flui/button
+        [re-com/button
          :label "Hide"
          :on-click
          #(event/dispatch!
@@ -449,7 +457,7 @@
            {:dat.view/handler :onyx.sim.event/hide-task
             ::sim sim
             ::task-name task-name})]
-        (when task-doc [flui/label :style {:color :white} :label task-doc])])
+        (when task-doc [re-com/label :style {:color :white} :label task-doc])])
       [pretty-inbox conn
        (assoc seg
               ::render render-fn)]
@@ -460,7 +468,7 @@
 (defn- pretty-env [conn {:as seg ::keys [sim]}]
   (let [{:as env :keys [sorted-tasks]} @(pull-env conn sim)
         {::keys [hidden-tasks]} @(posh/pull conn '[::hidden-tasks] sim)]
-    [flui/v-box
+    [re-com/v-box
      :class "onyx-env"
      :children
      (into
@@ -472,14 +480,14 @@
 (defn- summary [conn {::keys [sim summary-fn]}]
   (let [summary-fn (or summary-fn onyx/env-summary)
         env @(pull-env conn sim)]
-    [flui/code :class "onyx-panel" :code (summary-fn env)]))
+    [code :class "onyx-panel" :code (summary-fn env)]))
 
 (defn- raw-env [conn {:as seg ::keys [sim]}]
   (let [only-summary? (control/control-attr conn ::only-summary? :control/toggled?)]
-    [flui/v-box
+    [re-com/v-box
      :class "onyx-env"
      :children
-     [(flui/title
+     [(re-com/title
        :label "Raw Environment"
        :level :level3)
       [summary conn (if only-summary?
@@ -582,7 +590,7 @@
   (::animating? @(posh/pull conn [::animating?] [:onyx/name ::settings])))
 
 (defn- env-style [conn]
-  [flui/v-box
+  [re-com/v-box
    :children
    [[control/field-label conn ::env-display-style]
     [control/radio-choice conn ::env-display-style 0]
@@ -591,7 +599,7 @@
     [control/toggle-checkbox conn ::only-summary?]]])
 
 (defn- action-box [conn]
-  [flui/h-box
+  [re-com/h-box
    :gap ".5ch"
    :children
    [[control/action-button conn :onyx.api/tick]
@@ -601,7 +609,7 @@
 
 (defn sim-view [conn {:as seg ::keys [sim]}]
 ;;   (log/info "selected-sim" sim)
-  [flui/v-box
+  [re-com/v-box
    :children
    [[control/when-show?
      [control/selection-list conn ::hidden-tasks]]
@@ -623,35 +631,35 @@
                        :where
                        [?sim :onyx/type ::sim]]
                      conn)]
-    [flui/v-box
+    [re-com/v-box
      :children
      (cat-into
-      [(flui/title
+      [(re-com/title
         :label "Simulator Management"
         :level :level1)]
       (for [{:keys [::title ::description]} sims]
-        (flui/v-box
+        (re-com/v-box
          :gap "1ch"
          :children
-         [(flui/title
+         [(re-com/title
            :level :level2
            :label title)
-          (flui/p description)]))
-      [(flui/p "TODO: + Simulator")])]))
+          (re-com/p description)]))
+      [(re-com/p "TODO: + Simulator")])]))
 
 (defn- debug-conn [conn]
   (let [the-whole-conn (ratom/make-reaction
                         (fn []
                           @conn))]
     (fn [conn]
-      [flui/code
+      [code
        :code @the-whole-conn
        :pr-fn pr-str])))
 
 (defn- settings [conn]
-  [flui/v-box
+  [re-com/v-box
    :children
-   [[flui/title
+   [[re-com/title
      :label "Settings"
      :level :level1]
     [control/toggle-checkbox conn ::hidden?]
@@ -686,31 +694,31 @@
 (defn- content-view [conn]
   (let [view (selected-view conn)]
     (log/info "selected-view" view)))
-    ; [flui/box
+    ; [re-com/box
     ;  :class "onyx-sim"
     ;  :child
     ;  [display-selected conn view]]))
 
 (defn ^:export sim-debug [{:as sys :keys [dat.sync.db/conn onyx.sim.core/sim]}
                           {:as seg ::keys [error inputs]}]
-  [flui/v-box
+  [re-com/v-box
    :children
-   [[flui/p (str "BROKEN!!! by " error)]
-    [flui/p (str "Inputs" (into
-                           {}
-                           (map (fn [[task-name segments]]
-                                  [task-name segments]))
-                           inputs))]
+   [[re-com/p (str "BROKEN!!! by " error)]
+    [re-com/p (str "Inputs" (into
+                             {}
+                             (map (fn [[task-name segments]]
+                                    [task-name segments]))
+                             inputs))]
     [sim-view conn seg]]])
 
 (defn ^:export sim-selector
   ([conn] (sim-selector {:dat.sync.db/conn conn} nil))
   ([{:as sys :keys [dat.sync.db/conn]}
     {:as seg}]
-   [flui/v-box
+   [re-com/v-box
     :children
-    [[flui/gap :size ".25rem"]
-     [flui/h-box
+    [[re-com/gap :size ".25rem"]
+     [re-com/h-box
       :style {:margin-left "auto"
               :margin-right "auto"}
       :align :center
@@ -718,79 +726,79 @@
       :children
       [[control/active-logo conn ::logo]]]
       ;  [control/nav-bar conn ::nav]]]
-     [flui/gap :size ".25rem"]
+     [re-com/gap :size ".25rem"]
      [content-view conn]]]))
 
-(defn aliasify [{::keys [alias]} segment]
-  (into
-    segment
-    (for [[aname path] alias]
-      [aname 
-       (if (sequential? path)
-         (get-in segment path)
-         (aliasify {::alias path} segment))])))
+; (defn aliasify [{::keys [alias]} segment]
+;   (into
+;     segment
+;     (for [[aname path] alias]
+;       [aname 
+;        (if (sequential? path)
+;          (get-in segment path)
+;          (aliasify {::alias path} segment))])))
 
-(defn ^:export nav-select [seg]
-  ;;TODO: event fx
-  seg)
+; (defn ^:export nav-select [seg]
+;   ;;TODO: event fx
+;   seg)
 
-(def nav-select-event
-  {:onyx.core/catalog
-   [{:onyx/name   ::event-actions
-     :onyx/type   :output
-     :onyx/plugin ::nav-select}]
+; (def nav-select-event
+;   {:onyx.core/catalog
+;    [{:onyx/name   ::event-actions
+;      :onyx/type   :output
+;      :onyx/plugin ::nav-select}]
    
-   :onyx.core/workflow
-   [[::event-args ::event-actions]]})
+;    :onyx.core/workflow
+;    [[::event-args ::event-actions]]})
 
-(def nav-job
-  [{:onyx.core/catalog
-    [{:onyx/name   ::selected-nav-q
-      :onyx/type   :input
-      :onyx/plugin :dat.sync.plugin/query
-      :dat.sync/q  '[:find ?selected-nav
-                     :where
-                     [_ :onyx.sim.settings/selected-nav ?selected-nav]]}
-     {:onyx/name    ::attrs-in
-      :onyx/plugin  :onyx.plugin/seq
-      :onyx.plugin.seq/seq [{::label-attr ::label}
-                            {::id-attr    ::id}
-                            {::on-change  nav-select-event}]}
-     {:onyx/name      ::selected-nav-alias
-      :onyx/type      :function
-      :onyx/fn        ::aliasify
-      :dat.view/alias {:dat.view/chosen [:?selected-nav]}}
-     {:onyx/name    ::nav-choices-q
-      :onyx/type    :input
-      :onyx/plugin  :dat.sync.plugin/query
-      :dat.sync/q   '[:find ?title ?sim
-                      :where
-                      [?sim ::title    ?title]
-                      [?sim :oynx/type ::sim]]}
-     {:onyx/name        ::nav-choices-alias
-      :onyx/type        :function
-      :onyx/fn          ::aliasify
-      :dat.view/alias {::label [:?title]
-                       ::id    [:?sim]}}
-     dat.view/mount-task]
+; (def nav-job
+;   [{:onyx.core/catalog
+;     [{:onyx/name   ::selected-nav-q
+;       :onyx/type   :input
+;       :onyx/plugin :dat.sync.plugin/query
+;       :dat.sync/q  '[:find ?selected-nav
+;                      :where
+;                      [_ :onyx.sim.settings/selected-nav ?selected-nav]]}
+;      {:onyx/name    ::attrs-in
+;       :onyx/plugin  :onyx.plugin/seq
+;       :onyx.plugin.seq/seq [{::label-attr ::label}
+;                             {::id-attr    ::id}
+;                             {::on-change  nav-select-event}]}
+;      {:onyx/name      ::selected-nav-alias
+;       :onyx/type      :function
+;       :onyx/fn        ::aliasify
+;       :dat.view/alias {:dat.view/chosen [:?selected-nav]}}
+;      {:onyx/name    ::nav-choices-q
+;       :onyx/type    :input
+;       :onyx/plugin  :dat.sync.plugin/query
+;       :dat.sync/q   '[:find ?title ?sim
+;                       :where
+;                       [?sim ::title    ?title]
+;                       [?sim :oynx/type ::sim]]}
+;      {:onyx/name        ::nav-choices-alias
+;       :onyx/type        :function
+;       :onyx/fn          ::aliasify
+;       :dat.view/alias {::label [:?title]
+;                        ::id    [:?sim]}}
+;      dat.view/mount-task]
 
-    :onyx.core/workflow
-    [[::selected-nav-q     ::selected-nav-alias]
-     [::selected-nav-alias ::render]
-     [::nav-choices        ::nav-choices-alias]
-     [::nav-choices-alias  :dat.view.render/mount]
-     [::attrs-in           :dat.view.render/mount]]}])
+;     :onyx.core/workflow
+;     [[::selected-nav-q     ::selected-nav-alias]
+;      [::selected-nav-alias ::render]
+;      [::nav-choices        ::nav-choices-alias]
+;      [::nav-choices-alias  :dat.view.render/mount]
+;      [::attrs-in           :dat.view.render/mount]]}])
 
-(defn sim-selector2 [{:as sys :keys [dat.sync.db/conn]}]
-  (let [segments [{:dat.view.render/type :dat.view.render/nav}
-                  {:dat.view/choice {:dat.view/label "One"
-                                     :dat.view/id 1}}
-                  {:dat.view/choice {:dat.view/label "Two"
-                                     :dat.view/id 2}}
-                  {:dat.view/choice {:dat.view/label "Three"
-                                     :dat.view/id 3}}
-                  {:dat.view/id-attr {:dat.view/attr :dat.view/id}}
-                  {:dat.view/label-attr {:dat.view/attr :dat.view/label}}
-                  {:dat.view/on-change nav-select-event}
-                  {:dat.view/chosen {:dat.view/id 1}}]]
-    [dat.view/quick-render segments]))
+; (defn sim-selector2 [{:as sys :keys [dat.sync.db/conn]}]
+;   (let [segments [{:dat.view.render/type :dat.view.render/nav}
+;                   {:dat.view/choice {:dat.view/label "One"
+;                                      :dat.view/id 1}}
+;                   {:dat.view/choice {:dat.view/label "Two"
+;                                      :dat.view/id 2}}
+;                   {:dat.view/choice {:dat.view/label "Three"
+;                                      :dat.view/id 3}}
+;                   {:dat.view/id-attr {:dat.view/attr :dat.view/id}}
+;                   {:dat.view/label-attr {:dat.view/attr :dat.view/label}}
+;                   {:dat.view/on-change nav-select-event}
+;                   {:dat.view/chosen {:dat.view/id 1}}]]
+;     [dat.view/quick-render segments]))
