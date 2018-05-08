@@ -24,6 +24,39 @@
 (def drain           onyx/drain)
 (def new-segment     onyx/new-segment)
 
+(def schema-idents
+  [{:db/ident :onyx.core/catalog
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/many}
+   {:db/ident :onyx.sim.view/options
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/many}
+   {:db/ident :onyx/name
+    :db/unique :db.unique/identity}
+   {:db/ident :control/name
+    :db/unique :db.unique/identity}
+   {:db/ident :dat.view/route
+    :db/unique :db.unique/identity}
+   {:db/ident ::job-id
+    :db/unique :db.unique/identity}
+   ;; TODO: move to dat.view
+   {:db/ident :dat.view.rep/layout
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/many}
+   {:db/ident :onyx.core/job
+    :db/valueType :db.type/ref}
+   {:db/ident ::selected-sim
+    :db/valueType :db.type/ref}
+   {:db/ident ::env
+    :db/valueType :db.type/ref}])
+
+(defn idents->schema [idents]
+  (into
+    {}
+    (map (fn [{:as id-entity :db/keys [ident]}]
+            [ident id-entity]))
+    idents))
+
 ;;
 ;; Init
 ;;
@@ -392,13 +425,15 @@
       (let [env (<transition-env env (first transitions))]
         (recur env (rest transitions))))))
 
-(def job-tss-query
-  '[:find [(pull ?tss [::event ::job ::job-id]) ...]
-    :where
-    [?tss ::complete? false]
-    [?tss ::event ::init]])
+(defn clear-signals [env]
+  (dissoc env ::signal))
 
-(defn- go-env! [env]
+(defn mark-completed [{:as env ::keys [signal]}]
+  (if (= ::complete signal)
+    (assoc env ::completed? true)
+    env))
+
+(defn go-env! [env]
   (go
     (if (polls-closed? env)
       (do
@@ -428,15 +463,8 @@
           (async/timeout 100)
           (recur env))
         (recur env)))))
-  ; (go-env! (init job)))
-  ; (go-transitions 
-  ;   [{::event ::init
-  ;     ::job job}
-  ;    ::poll!
-  ;    ::go-drain
-  ;    ::go-write!]))
 
-(defn- go-envs! [envs]
+(defn go-envs! [envs]
   (go-loop [envs-before envs
             envs-after []]
     (if (empty? envs-before)
@@ -444,97 +472,3 @@
       (let [env (<! (go-env! (first envs-before)))]
         (recur (rest envs-before) (conj envs-after env))))))
 
-(defn- into-envs [envs-before envs-after]
-  (into
-    envs-before
-    (for [env envs-after]
-      [(::job-id env) env])))
-
-(defn- clear-signals [env]
-  (dissoc env ::signal))
-
-(defn- mark-completed [{:as env ::keys [signal]}]
-  (if (= ::complete signal)
-    (assoc env ::completed? true)
-    env))
-
-(defn go-schedule-jobs! [{:dat.sync.db/keys [transact! q deref conn] :keys [envs control>]}]
-  ;; TODO: add kill/control chan
-  ;; TODO: scheduler
-  ;; TODO: completed?
-  (go-loop []
-    (let [envs-before (remove ::completed? (vals @envs))
-          _ (log/debug "Scheduling jobs:" (mapv ::job-id envs-before))
-          [envs-or-signal ch] (async/alts! [(go-envs! envs-before) control>])]
-      (if (= ch control>)
-        (if (== envs-or-signal ::kill)
-          (log/info "Kill Signal recieved. Closing job scheduler...")
-          (do 
-            (log/warn "Unhandled signal:" envs-or-signal)
-            (recur)))
-        (let [pause? (every?
-                      #(= (::signal %) ::pause)
-                      envs-or-signal)
-              envs-after (map mark-completed envs-or-signal)]
-          (if pause?
-            (do
-              (log/debug "Nothing to poll, pausing now")
-              (<! (async/timeout 100))
-              (swap! envs into-envs (map clear-signals envs-after)))
-            (do
-              (log/debug "Envs processed successfully")
-              (swap! envs into-envs envs-after)))
-          (recur))))))
-
-(defn gen-uuid []
-  (d/squuid))
-
-(defn submit-job [{:dat.sync.db/keys [transact! conn] :keys [envs]} job]
-  (let [job-id (or (:onyx/job-id job) (gen-uuid))]
-    (log/info "Submitting job:" job-id)
-    (swap! 
-      envs
-      assoc
-      job-id
-      (into
-        (init job)
-        {::job-id job-id
-         ::complete? false}))
-    ; (transact!
-    ;   conn
-    ;   [{::event ::init
-    ;     ::job job
-    ;     ::complete? false
-    ;     ::job-id job-id}]))
-    true))
-
-(def schema 
-  {:onyx.sim.api/job-id {:db/unique :db.unique/identity}})
-
-(defn- create-conn []
-  {:dat.sync.db/transact! d/transact!
-   :dat.sync.db/q d/q
-   :dat.sync.db/pull d/pull
-   :dat.sync.db/deref deref
-   :dat.sync.db/conn (d/create-conn schema)})
-
-(defrecord OnyxSimulator [envs control> conn]
-  component/Lifecycle
-  (start [component]
-    (let [simulator
-          {:control> (or control> (async/chan))
-           :conn     (or conn (create-conn))
-           :envs     (or envs (atom {}))}]
-      (go-schedule-jobs! simulator)
-      (into component simulator)))
-  (stop [component]
-    (async/onto-chan control> [::kill])
-    (assoc component
-      :envs nil
-      :control> nil)))
-
-(defn create-sim 
-  ([]
-   (create-sim {}))
-  ([opts]
-   (map->OnyxSimulator opts)))

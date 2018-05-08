@@ -4,11 +4,14 @@
             [onyx.sim.core :as sim]
             [posh.reagent :as posh]
             [onyx.sim.dat-view :as dat.view]
+            [onyx.sim.api :as api]
+            [onyx.sim.ui :as ui]
             [datascript.core :as d]))
 
 (defn create-conn []
-  (let [conn (d/create-conn sim/ds-schema)]
+  (let [conn (d/create-conn (api/idents->schema (into api/schema-idents ui/schema-idents)))];(d/create-conn (merge sim/ds-schema {:onyx.sim.api/job-id {:db/unique :db.unique/identity}}))]
     (posh/posh! conn)
+    (d/transact! conn ui/base-ui)
     ; (d/transact! conn sim/base-ui)
     ; (sim/sim! conn)
 
@@ -28,7 +31,7 @@
       (assoc component
         :conn conn)))
   (stop [component]
-    (sim/unsim! conn)
+    ; (sim/unsim! conn)
     (assoc component
       :conn nil)))
 

@@ -11,6 +11,7 @@
             [onyx.sim.examples.flow-short-circuit]
             [onyx.sim.examples.hello]
             [posh.reagent :as posh]
+            [onyx.sim.utils :refer [cat-into]]
             [reagent.ratom :as ratom]
             [reagent.core :as r :refer [atom]]
             [onyx.sim.ui :as ui]))

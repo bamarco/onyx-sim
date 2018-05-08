@@ -85,7 +85,13 @@
   (first (eduction xf [item])))
 
 (defn ppr-str [& args]
-  (with-out-str (apply pprint args)))
+  (apply 
+    str 
+    (map 
+      #(if (string? %) 
+        % 
+        (with-out-str (pprint %))) 
+      args)))
 
 ;;
 ;; cat-into takes a collection to merge into, any number of transducers, and at least one sequence. The sequences are treated as a single sequence back to back.
