@@ -5,6 +5,7 @@
     [posh.reagent :as posh]
     [onyx.sim.api :as api]
     [datascript.core :as d]
+    [reagent.ratom :as ratom]
     [onyx.sim.utils :as utils :refer [cat-into deref-or-value ppr-str mapply]]))
 
 (def schema-idents
@@ -74,9 +75,9 @@
      [{:id ::settings
        :label [:i {:class "zmdi zmdi-settings"}]}]
      sims
-     [{:id ::sims
+     [{:id ::jobs
        :label [:i {:class "zmdi zmdi-widgets"}]}
-      {:id ::debug-conn
+      {:id ::db-view
        :label [:i {:class "zmdi zmdi-assignment"}]}])))
 
 ;;;
@@ -200,6 +201,41 @@
 
 (defn job-view [sim job-id])
 
+(defn third [coll]
+  (nth coll 2))
+
+(defn- codit [item]
+  [code :code item])
+
+(defn- box-it [item]
+  [re-com/box :child item])
+
+(defn- eav-view [db]
+  (let [eavs (d/datoms db :eavt)
+        es (map first eavs)
+        as (map second eavs)
+        vs (map third eavs)]
+    [re-com/h-box
+      :children
+      [
+        [re-com/v-box :children (into [[re-com/label :class "field-label" :label "Eid"]] (map codit es))]
+        [re-com/v-box :children (into [[re-com/label :class "field-label" :label "Attr"]] (map codit as))]
+        [re-com/v-box :children (into [[re-com/label :class "field-label" :label "Value"]] (map codit vs))]]]))
+
+(defn- db-view [{:keys [conn]}]
+  (let [the-whole-conn (ratom/make-reaction #(deref conn))]
+    (fn [_]
+      (let [{:as db :keys [schema]} @the-whole-conn]
+        [re-com/v-box
+          :children
+          [
+            [re-com/title
+              :label "The DB"
+              :level :level1]
+            [re-com/label :class "field-label" :label "Schema"]
+            [code :code schema]
+            [eav-view db]]]))))
+
 (defmulti display-selected (fn [_ selection] selection))
 
 ; (defmethod display-selected
@@ -212,10 +248,10 @@
   [conn _]
   [settings conn])
 
-; (defmethod display-selected
-;   :debug-conn
-;   [conn _]
-;   [debug-conn conn])
+(defmethod display-selected
+  ::db-view
+  [sim _]
+  [db-view sim])
 
 ; (defmethod display-selected
 ;   :sims
