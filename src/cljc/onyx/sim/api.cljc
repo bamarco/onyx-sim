@@ -37,7 +37,7 @@
     :db/unique :db.unique/identity}
    {:db/ident :dat.view/route
     :db/unique :db.unique/identity}
-   {:db/ident ::job-id
+   {:db/ident :onyx/job-id
     :db/unique :db.unique/identity}
    ;; TODO: move to dat.view
    {:db/ident :dat.view.rep/layout

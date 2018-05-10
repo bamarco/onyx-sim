@@ -3,6 +3,7 @@
     [com.stuartsierra.component :as component]
     [taoensso.timbre :as log]
     [datascript.core :as d]
+    #?(:cljs [onyx.sim.ui :as ui])
     [clojure.core.async :as async :refer [go go-loop <! >!]]
     [onyx.sim.api :as api]))
 
@@ -13,8 +14,19 @@
 ;    :dat.sync.db/deref deref
 ;    :dat.sync.db/conn (d/create-conn schema)})
 
-(defn- gen-uuid []
+(defn gen-uuid []
   (d/squuid))
+
+(defn- simplify [sim-job]
+  (-> (dissoc sim-job :onyx/type :onyx/doc :onyx/name)
+      (clojure.set/rename-keys {:onyx.core/catalog         :catalog
+                                :onyx.core/workflow        :workflow
+                                :onyx.core/lifecycles      :lifecycles
+                                :onyx.core/windows         :windows
+                                :onyx.core/triggers        :triggers
+                                :onyx.core/task-scheduler  :task-scheduler
+                                :onyc.core/metadata        :metadata
+                                :onyx.core/flow-conditions :flow-conditions})))
 
 (defn into-envs [envs-before envs-after]
   (into
@@ -48,7 +60,7 @@
               (swap! envs into-envs envs-after)))
           (recur))))))
 
-(defn submit-job [{:dat.sync.db/keys [transact! conn] :keys [envs]} job]
+(defn submit-job [{:keys [conn envs]} job]
   (let [job-id (or (:onyx/job-id job) (gen-uuid))]
     ;; TODO: make idempotent based on job-id/job-hash
     (log/info "Submitting job:" job-id)
@@ -57,27 +69,28 @@
       assoc
       job-id
       (into
-        (api/init job)
+        (api/init (simplify job))
         {:onyx.sim.api/job-id job-id
          :onyx.sim.api/complete? false}))
+    (d/transact!
+      conn
+      [(assoc job :onyx/job-id job-id)])
     true))
 
-(defrecord OnyxSimulator [envs control> knowbase conn]
+(defrecord OnyxSimulator [envs control> conn]
   component/Lifecycle
   (start [component]
-    (let [conn (or conn (:conn knowbase) (throw (ex-info "No Knowledge Base or Datascript conn set." {})))
+    ;; FIXME: ui/schema is hacked in here due to lacking update schema for datascript
+    (let [conn (or conn (d/create-conn (api/idents->schema (concat api/schema-idents #?(:cljs ui/schema-idents)))))
           simulator
           {:control> (or control> (async/chan))
            :envs     (or envs (atom {}))
-           :knowbase (or knowbase {:conn conn})
            :conn conn}]
-           
       (go-schedule-jobs! simulator)
       (into component simulator)))
   (stop [component]
     (go (>! control> ::kill))
     (assoc component
-      :knowbase nil
       :conn     nil
       :envs     nil
       :control> nil)))

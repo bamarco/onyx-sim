@@ -23,6 +23,6 @@
                         :onyx/type :function
                         :onyx/fn ::my-identity
                         :onyx/batch-size onyx-batch-size}]
-   :onyx.core/workflow [[:in :hello] [:hello :out]]
+   :onyx.core/workflow [[:in :hello] [:hello :out]]})
    ;;                      :onyx.core/flow-conditions []
-   })
+   
