@@ -26,6 +26,22 @@
     ::animating? false}])
 
 ;;;
+;;; Colors
+;;;
+(def onyx-green "#43d16b")
+(def onyx-gray "#354d56")
+(def sim-blue "#6a8aac")
+(def sim-pale-blue "#9ee3ff")
+(def sim-gold "#c0b283")
+(def sim-dark-tan "#A07F60")
+(def sim-light-tan "#D7CEC7")
+
+(def ^:private task-colors
+  {:function sim-pale-blue
+    :input onyx-gray
+    :output onyx-green})
+
+;;;
 ;;; Queries
 ;;;
 (defn q [q-expr {:keys [conn]} & ins]
@@ -194,7 +210,7 @@
           :on-change #(update-setting! sim ::task-hider? (not task-hider?))]
         [re-com/checkbox 
           :model description?
-          :label "Show Sim Description"
+          :label "Show Job Description"
           :on-change #(update-setting! sim ::description? (not description?))]
         [re-com/checkbox 
           :model next-action?
@@ -226,8 +242,77 @@
           ;; FIXME: hidden tasks should be per job
           :on-change (partial update-setting! sim ::hidden-tasks)]]]))
 
-(defn pretty-task-box [sim task-name]
-  [:div (pr-str task-name)])
+(defn- default-render [segs]
+  [code :code segs])
+
+(defn- pretty-outbox [sim job-id task-name & {:keys [render]}]
+  (let [{:as env :keys [tasks]} (pull-env sim job-id)
+        outputs (get-in tasks [task-name :outputs])]
+    ;; ???: dump segments button
+    (if-not outputs none
+      [re-com/v-box
+       :class "onyx-outbox"
+       :children
+       [[re-com/title
+         :label "Outbox"
+         :level :level3]
+        [render outputs]]])))
+
+(defn- pretty-inbox [sim job-id task-name & {:keys [render]}]
+  (let [{:keys [tasks]} (pull-env sim job-id)
+        {::keys [import-uris]} (pull sim '[::import-uris] [:onyx/job-id job-id])
+        inbox (get-in tasks [task-name :inbox])]
+    [re-com/v-box
+     :class "onyx-inbox"
+     :children
+     [[re-com/h-box
+       :gap ".5ch"
+       :align :center
+       :children
+       [[re-com/title
+         :label "Inbox"
+         :level :level3]
+        [re-com/input-text
+         :model (str (first import-uris))
+         :on-change #()]
+        [re-com/button
+         :label "Import Segments"
+         :on-click #()]]]
+      [render inbox]]]))
+
+(defn- pretty-task-box [sim job-id task-name]
+  (let [env (pull-env sim job-id)
+        {::keys [render]} (pull sim [::render] [:onyx/job-id job-id])
+        task-type (get-in env [:tasks task-name :event :onyx.core/task-map :onyx/type])
+        task-doc (get-in env [:tasks task-name :event :onyx.core/task-map :onyx/doc])
+        local-render (get-in env [:tasks task-name :event :onyx.core/task-map ::render])
+        render-segments? (pull-setting sim ::render-segments?)
+        render-fn (if render-segments?
+                    (or local-render render default-render)
+                    default-render)]
+    [re-com/v-box
+      :class "onyx-task onyx-panel"
+      :gap ".25rem"
+      :children
+      [
+        [re-com/h-box
+          :gap ".5ch"
+          :align :center
+          :style {:background-color (get task-colors task-type)
+                  :border-radius :5px}
+          :children
+          [
+            [re-com/gap :size ".5ch"]
+            [re-com/title
+              :label task-name
+              :level :level2]
+            [re-com/button
+              :label "Hide"
+              :on-click #()]]]
+        (when task-doc
+          [re-com/label :style {:color :white} :label task-doc])
+        [pretty-inbox sim job-id task-name :render render-fn]
+        [pretty-outbox sim job-id task-name :render render-fn]]]))
 
 (defn- pretty-env [sim job-id]
   (let [{:as env :keys [sorted-tasks]} (pull-env sim job-id)
@@ -239,7 +324,7 @@
       []
       (for [task-name (remove (or hidden-tasks #{}) sorted-tasks)]
         ^{:key task-name}
-        [pretty-task-box sim task-name]))]))
+        [pretty-task-box sim job-id task-name]))]))
 
 (defn- summary [sim job-id & {:keys [summary-fn]}]
   (let [summary-fn (or summary-fn api/env-summary)
@@ -310,7 +395,7 @@
         (case env-style
           ::pretty-env [pretty-env sim job-id]
           ::raw-env    [raw-env sim job-id]
-          [warn "Unknown style" env-style])]]))
+          [warn "Unknown environment style" env-style])]]))
 
 (defn manage-jobs [sim]
   [:div (str "jobs: " (q ?jobs sim))])
