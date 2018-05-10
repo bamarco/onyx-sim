@@ -58,11 +58,14 @@
 (defn pull-setting [sim attr]
   (pull-attr sim attr [:onyx/name ::settings]))
 
+(defn pull-from-job [{:as sim ::keys [selected-job-id]} attrs]
+  (pull sim attrs [:onyx/job-id selected-job-id]))
+
 (defn pull-settings [sim attrs]
   (pull sim attrs [:onyx/name ::settings]))
 
-(defn pull-env [{:keys [envs]} job-id]
-  (get @envs job-id))
+(defn pull-env [{:keys [envs ::selected-job-id]}]
+  (get @envs selected-job-id))
 
 ;;
 ;; q-exprs
@@ -165,7 +168,7 @@
 ;;;
 ;;; Simulator Components
 ;;;
-(defn env-style [sim]
+(defn- env-style [sim]
   (let [{::keys [only-summary? render-segments? env-style]} 
         (pull-settings sim '[::render-segments? ::only-summary? ::env-style])
         pretty? (= env-style ::pretty-env)
@@ -195,7 +198,7 @@
           :disabled? pretty?
           :on-change #(update-setting! sim ::only-summary? (not only-summary?))]]]))
 
-(defn settings [{:as sim :keys [conn]}]
+(defn- settings [{:as sim :keys [conn]}]
   (let [{::keys [task-hider? description? next-action?]}
         (pull-settings sim [::task-hider? ::description? ::next-action?])]
     [re-com/v-box
@@ -218,17 +221,17 @@
           :on-change #(update-setting! sim ::next-action? (not next-action?))]
         [env-style sim]]]))
 
-(defn sorted-tasks [{:keys [envs]} job-id]
+(defn- sorted-tasks [{:keys [envs ::selected-job-id]}]
   (vec
-    (for [task (get-in @envs [job-id :sorted-tasks])]
+    (for [task (get-in @envs [selected-job-id :sorted-tasks])]
       {:id task
         :label (pr-str task)})))
 
-(defn hidden-tasks [sim]
+(defn- hidden-tasks [sim]
   (pull-setting sim ::hidden-tasks))
 
-(defn hidden-tasks-view [sim job-id]
-  (let [choices (or (vec (sorted-tasks sim job-id)) [])
+(defn- hidden-tasks-view [sim]
+  (let [choices (or (vec (sorted-tasks sim)) [])
         _ (log/info "choizez" choices)
         chosen  (hidden-tasks sim)]
         
@@ -245,8 +248,8 @@
 (defn- default-render [segs]
   [code :code segs])
 
-(defn- pretty-outbox [sim job-id task-name & {:keys [render]}]
-  (let [{:as env :keys [tasks]} (pull-env sim job-id)
+(defn- pretty-outbox [sim task-name & {:keys [render]}]
+  (let [{:as env :keys [tasks]} (pull-env sim)
         outputs (get-in tasks [task-name :outputs])]
     ;; ???: dump segments button
     (if-not outputs none
@@ -258,9 +261,9 @@
          :level :level3]
         [render outputs]]])))
 
-(defn- pretty-inbox [sim job-id task-name & {:keys [render]}]
-  (let [{:keys [tasks]} (pull-env sim job-id)
-        {::keys [import-uris]} (pull sim '[::import-uris] [:onyx/job-id job-id])
+(defn- pretty-inbox [sim task-name & {:keys [render]}]
+  (let [{:keys [tasks]} (pull-env sim)
+        {::keys [import-uris]} (pull-from-job sim '[::import-uris])
         inbox (get-in tasks [task-name :inbox])]
     [re-com/v-box
      :class "onyx-inbox"
@@ -280,9 +283,9 @@
          :on-click #()]]]
       [render inbox]]]))
 
-(defn- pretty-task-box [sim job-id task-name]
-  (let [env (pull-env sim job-id)
-        {::keys [render]} (pull sim [::render] [:onyx/job-id job-id])
+(defn- pretty-task-box [sim task-name]
+  (let [env (pull-env sim)
+        {::keys [render]} (pull-from-job sim [::render])
         task-type (get-in env [:tasks task-name :event :onyx.core/task-map :onyx/type])
         task-doc (get-in env [:tasks task-name :event :onyx.core/task-map :onyx/doc])
         local-render (get-in env [:tasks task-name :event :onyx.core/task-map ::render])
@@ -311,11 +314,11 @@
               :on-click #()]]]
         (when task-doc
           [re-com/label :style {:color :white} :label task-doc])
-        [pretty-inbox sim job-id task-name :render render-fn]
-        [pretty-outbox sim job-id task-name :render render-fn]]]))
+        [pretty-inbox sim task-name :render render-fn]
+        [pretty-outbox sim task-name :render render-fn]]]))
 
-(defn- pretty-env [sim job-id]
-  (let [{:as env :keys [sorted-tasks]} (pull-env sim job-id)
+(defn- pretty-env [sim]
+  (let [{:as env :keys [sorted-tasks]} (pull-env sim)
         hidden-tasks (pull-setting sim ::hidden-tasks)]
     [re-com/v-box
      :class "onyx-env"
@@ -324,14 +327,14 @@
       []
       (for [task-name (remove (or hidden-tasks #{}) sorted-tasks)]
         ^{:key task-name}
-        [pretty-task-box sim job-id task-name]))]))
+        [pretty-task-box sim task-name]))]))
 
-(defn- summary [sim job-id & {:keys [summary-fn]}]
+(defn- summary [sim & {:keys [summary-fn]}]
   (let [summary-fn (or summary-fn api/env-summary)
-        env (pull-env sim job-id)]
+        env (pull-env sim)]
     [code :class "onyx-panel" :code (summary-fn env)]))
 
-(defn- raw-env [sim job-id]
+(defn- raw-env [sim]
   (let [only-summary? (pull-setting sim ::only-summary?)]
     [re-com/v-box
      :class "onyx-env"
@@ -339,10 +342,10 @@
      [(re-com/title
        :label "Raw Environment"
        :level :level3)
-      [summary sim job-id :summary-fn (when-not only-summary? identity)]]]))
+      [summary sim :summary-fn (when-not only-summary? identity)]]]))
 
-(defn- next-action [sim job-id]
-  (let [{:as env :keys [next-action]} (pull-env sim job-id)]
+(defn- next-action [sim]
+  (let [{:as env :keys [next-action]} (pull-env sim)]
     [re-com/h-box
       :gap "1ch"
       :children
@@ -353,11 +356,12 @@
         [re-com/label
           :label (str next-action)]]]))
 
-(defn- description [sim job-id]
-  (let [{:onyx/keys [doc]} (pull sim '[:onyx/doc] [:onyx/job-id job-id])]
+(defn- description [sim]
+  (let [{:onyx/keys [doc]} (pull-from-job sim '[:onyx/doc])]
     [re-com/p doc]))
 
-(defn- action-bar [sim job-id]
+(defn- action-bar [sim]
+  ;; FIXME: running?
   (let [running? (q ?animating sim)]
     [re-com/h-box
       :gap ".5ch"
@@ -379,22 +383,22 @@
           :label (if running? "Stop" "Play")
           :on-click #()]]]))
 
-(defn job-view [sim job-id]
+(defn job-view [sim]
   (let [{::keys [env-style next-action? task-hider? description?]}
         (pull-settings sim [::env-style ::next-action? ::task-hider? ::description?])]
     [re-com/v-box
       :children
       [
         (when task-hider?
-          [hidden-tasks-view sim job-id])
+          [hidden-tasks-view sim])
         (when description?
-          [description sim job-id])
+          [description sim])
         (when next-action?
-          [next-action sim job-id])
-        [action-bar sim job-id]
+          [next-action sim])
+        [action-bar sim]
         (case env-style
-          ::pretty-env [pretty-env sim job-id]
-          ::raw-env    [raw-env sim job-id]
+          ::pretty-env [pretty-env sim]
+          ::raw-env    [raw-env sim]
           [warn "Unknown environment style" env-style])]]))
 
 (defn manage-jobs [sim]
@@ -432,7 +436,9 @@
             [code :code schema]
             [eav-view db]]]))))
 
-(defmulti display-selected (fn [_ selection] selection))
+(defmulti display-selected 
+  (fn [_ selection] 
+    selection))
 
 (defmethod display-selected
   ::settings
@@ -451,8 +457,8 @@
 
 (defmethod display-selected
   :default
-  [sim selected]
-  [job-view sim selected])
+  [sim job-id]
+  [job-view (assoc sim ::selected-job-id job-id)])
 
 (defn selected [sim]
   (let [view (pull-setting sim ::selected-nav)]
