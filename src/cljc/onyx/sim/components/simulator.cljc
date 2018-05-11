@@ -18,7 +18,7 @@
   (d/squuid))
 
 (defn- simplify [sim-job]
-  (-> (dissoc sim-job :onyx/type :onyx/doc :onyx/name)
+  (-> sim-job
       (clojure.set/rename-keys {:onyx.core/catalog         :catalog
                                 :onyx.core/workflow        :workflow
                                 :onyx.core/lifecycles      :lifecycles
@@ -26,7 +26,8 @@
                                 :onyx.core/triggers        :triggers
                                 :onyx.core/task-scheduler  :task-scheduler
                                 :onyc.core/metadata        :metadata
-                                :onyx.core/flow-conditions :flow-conditions})))
+                                :onyx.core/flow-conditions :flow-conditions})
+      (select-keys [:catalog :workflow :lifecycles :windows :triggers :task-scheduler :metadata :flow-conditions])))
 
 (defn into-envs [envs-before envs-after]
   (into
@@ -86,6 +87,7 @@
           {:control> (or control> (async/chan))
            :envs     (or envs (atom {}))
            :conn conn}]
+      ;; FIXME: make idempotent
       (go-schedule-jobs! simulator)
       (into component simulator)))
   (stop [component]

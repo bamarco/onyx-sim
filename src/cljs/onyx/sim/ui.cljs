@@ -89,7 +89,7 @@
   (let [jobs (q ?jobs sim)
         sims (for [[job-id] jobs]
                {:id job-id
-                :label "temp"})]
+                :label (or (::title (pull sim '[::title] [:onyx/job-id job-id]) job-id))})]
     (cat-into
      [{:id ::settings
        :label [:i {:class "zmdi zmdi-settings"}]}]
@@ -138,17 +138,8 @@
 (defn warn
   ""
   [& args]
-  (log/info (ppr-str args))
   [re-com/label :label (apply ppr-str args)])
 
-(defn logo [sim]
-  (let [animating? (q ?animating sim)]
-    ; [:div (str @(:conn sim))]))
-    [active-logo
-     :img "ns/onyx/onyx-logo.png"
-     :active? animating?
-     :label "nyx-sim (alpha)"]))
-  
 (defn field-label [label]
   [re-com/label
     :class "field-label"
@@ -168,6 +159,14 @@
 ;;;
 ;;; Simulator Components
 ;;;
+(defn logo [sim]
+  (let [animating? (q ?animating sim)]
+    ; [:div (str @(:conn sim))]))
+    [active-logo
+      :img "ns/onyx/onyx-logo.png"
+      :active? animating?
+      :label "nyx-sim (alpha)"]))
+
 (defn- env-style [sim]
   (let [{::keys [only-summary? render-segments? env-style]} 
         (pull-settings sim '[::render-segments? ::only-summary? ::env-style])
@@ -232,9 +231,7 @@
 
 (defn- hidden-tasks-view [sim]
   (let [choices (or (vec (sorted-tasks sim)) [])
-        _ (log/info "choizez" choices)
         chosen  (hidden-tasks sim)]
-        
     [re-com/v-box
       :children
       [
@@ -401,8 +398,32 @@
           ::raw-env    [raw-env sim]
           [warn "Unknown environment style" env-style])]]))
 
+(defn manage-job-view [sim]
+  (let [{:keys [onyx/job-id onyx/doc ::title :onyx.core/workflow]} (pull-from-job sim '[:onyx.core/workflow :onyx/job-id :onyx/doc ::title])]
+    [re-com/v-box
+      :children
+      [
+        [field-label "Title"]
+        [re-com/label :label (str title)]
+        [field-label "Job-id"]
+        [re-com/label :label (str job-id)]
+        [field-label "Description"]
+        [re-com/p (str doc)]
+        [field-label "Workflow"]
+        [code :code workflow]]]))
+
 (defn manage-jobs [sim]
-  [:div (str "jobs: " (q ?jobs sim))])
+  (let [jobs (q ?jobs sim)]
+    [re-com/v-box
+      :children
+      (into
+        []
+        (comp
+          (map
+            (fn [[job-id]]
+              [manage-job-view (assoc sim ::selected-job-id job-id)]))
+          (interpose [re-com/gap :size "1rem"]))
+        jobs)]))
 
 (defn third [coll]
   (nth coll 2))

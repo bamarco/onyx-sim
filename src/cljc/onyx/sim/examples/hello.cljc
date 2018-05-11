@@ -13,6 +13,7 @@
 (def job
   {:onyx/type :onyx.core/job
    :onyx/doc "Simulation Example."
+   :onyx.sim.ui/title "Hello"
    :onyx.core/catalog [{:onyx/name :in
                         :onyx/type :input
                         :onyx/batch-size onyx-batch-size}

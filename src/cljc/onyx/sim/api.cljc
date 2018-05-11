@@ -25,30 +25,34 @@
 (def new-segment     onyx/new-segment)
 
 (def schema-idents
-  [{:db/ident :onyx.core/catalog
-    :db/valueType :db.type/ref
-    :db/cardinality :db.cardinality/many}
-   {:db/ident :onyx.sim.view/options
-    :db/valueType :db.type/ref
-    :db/cardinality :db.cardinality/many}
-   {:db/ident :onyx/name
-    :db/unique :db.unique/identity}
-   {:db/ident :control/name
-    :db/unique :db.unique/identity}
-   {:db/ident :dat.view/route
-    :db/unique :db.unique/identity}
-   {:db/ident :onyx/job-id
-    :db/unique :db.unique/identity}
-   ;; TODO: move to dat.view
-   {:db/ident :dat.view.rep/layout
-    :db/valueType :db.type/ref
-    :db/cardinality :db.cardinality/many}
-   {:db/ident :onyx.core/job
-    :db/valueType :db.type/ref}
-   {:db/ident ::selected-sim
-    :db/valueType :db.type/ref}
-   {:db/ident ::env
-    :db/valueType :db.type/ref}])
+  [
+    {:db/ident :onyx.core/catalog
+      :db/valueType :db.type/ref
+      :db/cardinality :db.cardinality/many}
+    {:db/ident :onyx.core/flow-conditions
+      :db/valueType :db.type/ref
+      :db/cardinality :db.cardinality/many}
+    {:db/ident :onyx.sim.view/options
+      :db/valueType :db.type/ref
+      :db/cardinality :db.cardinality/many}
+    {:db/ident :onyx/name
+      :db/unique :db.unique/identity}
+    {:db/ident :control/name
+      :db/unique :db.unique/identity}
+    {:db/ident :dat.view/route
+      :db/unique :db.unique/identity}
+    {:db/ident :onyx/job-id
+      :db/unique :db.unique/identity}
+    ;; TODO: move to dat.view
+    {:db/ident :dat.view.rep/layout
+      :db/valueType :db.type/ref
+      :db/cardinality :db.cardinality/many}
+    {:db/ident :onyx.core/job
+      :db/valueType :db.type/ref}
+    {:db/ident ::selected-sim
+      :db/valueType :db.type/ref}
+    {:db/ident ::env
+      :db/valueType :db.type/ref}])
 
 (defn idents->schema [idents]
   (into

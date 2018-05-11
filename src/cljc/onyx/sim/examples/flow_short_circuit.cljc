@@ -86,7 +86,8 @@
   {:onyx.core/catalog catalog
    :onyx.core/workflow workflow
    :onyx.core/flow-conditions flow-conditions
-   :onyx.sim/title "Flow Short Circuit" ;; ???: how to break up sim vs job?
+   :onyx/type :onyx.core/job
+   :onyx.sim.ui/title "Flow Short Circuit" ;; ???: how to break up sim vs job?
    :onyx/doc "An example of flow conditions with short circuit enabled."})
 ;;    :onyx.core/lifecycles lifecycles
    
