@@ -19,6 +19,7 @@
                  [environ "1.1.0"]
                  [com.stuartsierra/component "0.3.2"]
                  [org.danielsz/system "0.4.1"]
+                 [com.rpl/specter "1.1.1"]
                  [reagent "0.7.0"]
                  [posh "0.5.5"]
                  [com.taoensso/timbre "4.10.0"]

@@ -3,16 +3,12 @@
     [com.stuartsierra.component :as component]
     [taoensso.timbre :as log]
     [datascript.core :as d]
+    [onyx.sim.kb :as kb]
+    #?(:cljs [posh.reagent :as posh])
     #?(:cljs [onyx.sim.ui :as ui])
+    #?(:cljs [reagent.core :as r])
     [clojure.core.async :as async :refer [go go-loop <! >!]]
     [onyx.sim.api :as api]))
-
-; (defn- create-conn []
-;   {:dat.sync.db/transact! d/transact!
-;    :dat.sync.db/q d/q
-;    :dat.sync.db/pull d/pull
-;    :dat.sync.db/deref deref
-;    :dat.sync.db/conn (d/create-conn schema)})
 
 (defn gen-uuid []
   (d/squuid))
@@ -61,11 +57,11 @@
               (swap! envs into-envs envs-after)))
           (recur))))))
 
-(defn submit-job [{:keys [conn envs]} job]
+(defn submit-job [{:keys [knowbase envs]} job]
   (let [job-id (or (:onyx/job-id job) (gen-uuid))]
     ;; TODO: make idempotent based on job-id/job-hash
     (log/info "Submitting job:" job-id)
-    (swap! 
+    (swap!
       envs
       assoc
       job-id
@@ -73,29 +69,32 @@
         (api/init (simplify job))
         {:onyx.sim.api/job-id job-id
          :onyx.sim.api/complete? false}))
-    (d/transact!
-      conn
-      [(assoc job :onyx/job-id job-id)])
+    (kb/transact!
+      knowbase
+      (fn [kbs]
+        {:db [(assoc job :onyx/job-id job-id)]}))
     true))
 
-(defrecord OnyxSimulator [envs control> conn]
+(defrecord OnyxSimulator [knowbase envs control> event> job-id]
   component/Lifecycle
   (start [component]
     ;; FIXME: ui/schema is hacked in here due to lacking update schema for datascript
-    (let [conn (or conn (d/create-conn (api/idents->schema (concat api/schema-idents #?(:cljs ui/schema-idents)))))
-          simulator
-          {:control> (or control> (async/chan))
-           :envs     (or envs (atom {}))
-           :conn conn}]
+    (let [sim
+          (assoc
+            component
+            :control> (or control> (async/chan))
+            :event>   (or event> (async/chan))
+            :envs     (or envs (#?(:clj atom :cljs r/atom) {})))]
       ;; FIXME: make idempotent
-      (go-schedule-jobs! simulator)
-      (into component simulator)))
+      (go-schedule-jobs! sim)
+      sim))
   (stop [component]
     (go (>! control> ::kill))
     (assoc component
-      :conn     nil
-      :envs     nil
-      :control> nil)))
+      :envs nil
+      :control> nil
+      :event> nil
+      :job-id nil)))
 
 (defn new-onyx-sim 
   ([]

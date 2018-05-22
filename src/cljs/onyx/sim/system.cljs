@@ -1,18 +1,18 @@
 (ns onyx.sim.system
   (:require [com.stuartsierra.component :as component]
             [onyx.sim.components.ui        :refer [new-ui-component]]
-            ; [onyx.sim.components.db        :refer [new-knowledge-base]]
+            [onyx.sim.components.kb        :refer [new-knowledge-base]]
+            [onyx.sim.components.datascript :refer [new-datascript]]
             [onyx.sim.components.simulator :refer [new-onyx-sim]]))
-;;             [nightlight.repl-server]
-            
 
 (declare ^:export system)
 
 (defn new-system []
   (component/system-map
-    ; :knowbase  (new-knowledge-base)
-    :simulator (new-onyx-sim)
-    :app-root  (component/using (new-ui-component) [:simulator])))
+    :datascript (new-datascript)
+    :knowbase (component/using (new-knowledge-base) {:db :datascript})
+    :simulator (component/using (new-onyx-sim) [:knowbase])
+    :ui  (component/using (new-ui-component) [:simulator :knowbase])))
 
 (defn init []
   (set! system (new-system)))
