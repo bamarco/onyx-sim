@@ -29,13 +29,20 @@
   (into
     envs-before
     (for [env envs-after]
-      [(:onyx.sim.api/job-id env) env])))
+      [(:onyx/job-id env) env])))
 
-(defn go-schedule-jobs! [{:keys [envs control>]}]
+(def ?envs
+  '{:onyx.sim.kb/type :onyx.sim.kb.ratom/cursor
+    :onyx.sim.kb.ratom/in {$ :state}
+    :onyx.sim.kb.ratom/path [:envs]})
+
+(defn go-schedule-jobs! [{:keys [knowbase control>]}]
   ;; TODO: scheduler
   (go-loop []
-    (let [envs-before (vec (remove :onyx.sim.api/completed? (vals @envs)))
-          _ (log/debug "Scheduling jobs:" (mapv :onyx.sim.api/job-id envs-before))
+    (let [snapshot (kb/snap knowbase)
+          envs (kb/q snapshot ?envs)
+          envs-before (vec (remove api/completed? (vals envs)))
+          _ (log/debug "Scheduling jobs:" (mapv :onyx/job-id envs-before))
           [envs-or-signal ch] (async/alts! [(api/go-envs! envs-before) control>])]
       (if (= ch control>)
         (if (= envs-or-signal ::kill)
@@ -44,47 +51,46 @@
             (log/warn "Unhandled signal:" envs-or-signal)
             (recur)))
         (let [pause? (every?
-                      #(= (:onyx.sim.api/signal %) :onyx.sim.api/pause)
-                      envs-or-signal)
+                       #(= (:onyx.sim.api/signal %) :onyx.sim.api/pause)
+                        envs-or-signal)
               envs-after (map api/mark-completed envs-or-signal)]
           (if pause?
             (do
               (log/debug "Nothing to poll, pausing now")
               (<! (async/timeout 100))
-              (swap! envs into-envs (map api/clear-signals envs-after)))
+              (kb/transact!
+                knowbase
+                (fn [kbs]
+                  {:state [[:update :envs into-envs (map api/clear-signals envs-after)]]})))
             (do
               (log/debug "Envs processed successfully")
-              (swap! envs into-envs envs-after)))
+              (kb/transact!
+                knowbase
+                (fn [kbs]
+                  {:state [[:update :envs into-envs envs-after]]}))))
           (recur))))))
 
-(defn submit-job [{:keys [knowbase envs]} job]
-  (let [job-id (or (:onyx/job-id job) (gen-uuid))]
+(defn submit-job [{:keys [knowbase]} job]
+  (let [job (update job :onyx/job-id #(or % (gen-uuid)))
+        job-id (:onyx/job-id job)
+        env (assoc (api/init (simplify job)) :onyx/job-id job-id)]
     ;; TODO: make idempotent based on job-id/job-hash
-    (log/info "Submitting job:" job-id)
-    (swap!
-      envs
-      assoc
-      job-id
-      (into
-        (api/init (simplify job))
-        {:onyx.sim.api/job-id job-id
-         :onyx.sim.api/complete? false}))
+    (log/info "Submitting job:" (:onyx/job-id job))
     (kb/transact!
       knowbase
       (fn [kbs]
-        {:db [(assoc job :onyx/job-id job-id)]}))
+        {:state [[:assoc-in [:envs job-id] env]]
+         :db [job]}))
     true))
 
-(defrecord OnyxSimulator [knowbase envs control> event> job-id]
+(defrecord OnyxSimulator [knowbase control> event> job-id]
   component/Lifecycle
   (start [component]
-    ;; FIXME: ui/schema is hacked in here due to lacking update schema for datascript
     (let [sim
           (assoc
             component
             :control> (or control> (async/chan))
-            :event>   (or event> (async/chan))
-            :envs     (or envs (#?(:clj atom :cljs r/atom) {})))]
+            :event>   (or event> (async/chan)))]
       ;; FIXME: make idempotent
       (go-schedule-jobs! sim)
       sim))
@@ -96,8 +102,8 @@
       :event> nil
       :job-id nil)))
 
-(defn new-onyx-sim 
+(defn new-simulator
   ([]
-   (new-onyx-sim {}))
+   (new-simulator {}))
   ([opts]
    (map->OnyxSimulator opts)))

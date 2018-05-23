@@ -4,10 +4,10 @@
     [com.stuartsierra.component :as component]
     [onyx.sim.kb :as kb]
     [com.rpl.specter :as specter]
-    [posh.reagent :as posh]
-    [reagent.ratom :refer [make-reaction]]
+    #?(:cljs [posh.reagent :as posh])
+    #?(:cljs [reagent.ratom :refer [make-reaction]])
     [onyx.sim.api :as api]
-    [onyx.sim.ui :as ui]
+    #?(:cljs [onyx.sim.ui :as ui])
     [datascript.core :as d]))
 
 (defn- substitute [form inputs]
@@ -86,7 +86,12 @@
         ; _ (log/info "kpinputs" inputs)
         [pull-expr eid] (q-expr->ds-pull q-expr inputs)
         ; _ (log/info "k e e" pull-expr eid)
-        reaction (posh/pull conn pull-expr eid)]
+        reaction #?(:cljs
+                    (posh/pull conn pull-expr eid)
+                    :clj
+                    (let [p (promise)]
+                      (deliver (d/pull conn pull-expr eid))
+                      p))]
     reaction))
 
 (defmethod kb/q :onyx.sim.kb.datascript/q
@@ -108,17 +113,23 @@
         ; _ (log/info "kexpr" ds-q-expr)
         ins (map inputs (rest (:in ds-q-expr)))
         ; _ (log/info "kins" ins)
-        reaction (make-reaction
-                   (fn [] 
-                    (apply d/q ds-q-expr @conn ins)))]
+        reaction #?(:cljs
+                    (make-reaction
+                      (fn [] 
+                        (apply d/q ds-q-expr @conn ins)))
+                    :clj
+                    (let [p (promise)]
+                      (deliver (apply d/q ds-q-expr @conn ins))
+                      p))]
     reaction))
 
 (defrecord Datascript [conn]
   component/Lifecycle
   (start [component]
-    (let [schema (api/idents->schema (concat api/schema-idents ui/schema-idents))
+    ;; TODO: move idents to edn
+    (let [schema (api/idents->schema (concat api/schema-idents #?(:cljs ui/schema-idents :clj nil)))
           conn (or conn (d/create-conn schema))]
-      (posh/posh! conn)
+      #?(:cljs (posh/posh! conn))
       (assoc component
         :conn conn)))
   (stop [component]
@@ -127,7 +138,7 @@
   kb/DB
   (-snap [_ kb]
     @conn)
-  (-transact! [_ kb kbs txs]
+  (-transact! [_ kb kbs dbs txs]
     (d/transact! conn txs)))
 
 (defn new-datascript 

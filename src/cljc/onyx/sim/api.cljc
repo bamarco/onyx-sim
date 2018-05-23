@@ -423,6 +423,9 @@
     (assoc env ::completed? true)
     env))
 
+(defn completed? [{:as env ::keys [completed?]}]
+  completed?)
+
 (defn go-env! [env]
   (go
     (if (polls-closed? env)

@@ -1,6 +1,6 @@
 (ns onyx.sim.components.kb
-    (:require 
-      [com.stuartsierra.component :as component]))
+  (:require 
+    [com.stuartsierra.component :as component]))
 
 (defrecord KnowledgeBase []
   component/Lifecycle
@@ -10,7 +10,5 @@
     component))
 
 (defn new-knowledge-base 
-    ([] 
-     (new-knowledge-base {}))
-    ([opts]
-     (map->KnowledgeBase opts)))
+  ([] (new-knowledge-base {}))
+  ([opts] (map->KnowledgeBase opts)))

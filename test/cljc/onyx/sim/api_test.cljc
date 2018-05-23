@@ -1,8 +1,9 @@
 (ns onyx.sim.api-test
   (:require 
     [onyx.sim.api :as sim]
-    [onyx.sim.components.simulator :refer [new-onyx-sim submit-job]]
+    [onyx.sim.components.simulator :refer [submit-job]]
     [com.stuartsierra.component :as component]
+    [onyx.sim.test-system :as test-system]
     [onyx.plugin.seq]
     [onyx.plugin.null]
     [onyx.plugin.core-async]
@@ -302,14 +303,15 @@
   (let [in> (async/chan)
         out> (async/chan)
         job (lc/bind-resources chan->chan-job {:in>  in>
-                                                :in-buf (atom {})
-                                                :out> out>})
+                                               :in-buf (atom {})
+                                               :out> out>})
         in2> (async/chan)
         out2> (async/chan)
         job2 (lc/bind-resources chan->chan-job {:in>  in2>
                                                 :in-buf (atom {})
                                                 :out> out2>})
-        sim (component/start (new-onyx-sim))]
+        sys (component/start (test-system/create-system))
+        sim (:simulator sys)]
     (submit-job sim job)
     (submit-job sim job2)
     (go (async/onto-chan in> [{:hello 1} {:hello 2} {:hello 3}]))
