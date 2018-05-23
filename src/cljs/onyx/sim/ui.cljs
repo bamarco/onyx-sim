@@ -59,54 +59,64 @@
 (def ?settings
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
     :onyx.sim.kb.datascript/pull-expr [*]
-    :onyx.sim.kb.datascript/in {$ :db}
+    :onyx.sim.kb/in {$ :db}
     :onyx.sim.kb.datascript/eid [::name ::settings]})
 
 (def ?jobs
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/q
     :onyx.sim.kb.datascript/find [?job-id]
-    :onyx.sim.kb.datascript/in {$ :db}
+    :onyx.sim.kb/in {$ :db}
     :onyx.sim.kb.datascript/where [[_ :onyx/job-id ?job-id]]})
 
 (def ?job-expr
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
     :onyx.sim.kb.datascript/pull-expr ?expr
     :onyx.sim.kb.datascript/eid [:onyx/job-id ?job-id]
-    :onyx.sim.kb.datascript/in {$ :db
-                                ?job-id ::job-id
-                                ?expr ::expr}})
+    :onyx.sim.kb/in {$ :db
+                     ?job-id ::job-id
+                     ?expr ::expr}})
 
 (def ?animating
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/q
     :onyx.sim.kb.datascript/find [?job .]
-    :onyx.sim.kb.datascript/in {$ :db}
+    :onyx.sim.kb/in {$ :db}
     :onyx.sim.kb.datascript/where [[?job ::animating? true]]})
 
 (def ?hidden-tasks
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
     :onyx.sim.kb.datascript/pull-expr [::hidden-tasks]
     :onyx.sim.kb.datascript/eid [:onyx/job-id ?job-id]
-    :onyx.sim.kb.datascript/in {$ :db
-                                ?job-id ::job-id}})
+    :onyx.sim.kb/in {$ :db
+                     ?job-id ::job-id}})
 
 (def ?import-uris
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
     :onyx.sim.kb.datascript/pull-expr [::import-uris]
     :onyx.sim.kb.datascript/eid [:onyx/job-id ?job-id]
-    :onyx.sim.kb.datascript/in {$ :db
-                                ?job-id ::job-id}})
+    :onyx.sim.kb/in {$ :db
+                     ?job-id ::job-id}})
 
-(defn pull-env [{:keys [envs knowbase]}]
-  (get @envs (::job-id knowbase)))
+(def ?sorted-tasks
+  '{:onyx.sim.kb/type :onyx.sim.kb.ratom/cursor
+    :onyx.sim.kb/in {$ :state
+                     ?job-id ::job-id}
+    :onyx.sim.kb.ratom/path [:envs ?job-id :sorted-tasks]})
+
+(def ?env
+  '{:onyx.sim.kb/type :onyx.sim.kb.ratom/cursor
+    :onyx.sim.kb/in {$ :state
+                     ?job-id ::job-id}
+    :onyx.sim.kb.ratom/path [:envs ?job-id]})
 
 ;;;
 ;;; Subscriptions
 ;;;
-(defn- sorted-tasks [{:keys [envs knowbase]}]
-  (vec
-    (for [task (get-in @envs [(::job-id knowbase) :sorted-tasks])]
-      {:id task
-        :label (pr-str task)})))
+(defn- sorted-tasks [{:keys [knowbase]}]
+  (let [sorted-tasks @(kb/sub knowbase ?sorted-tasks)]
+    (vec
+      (for [task-name sorted-tasks]
+        {:id task-name
+         :label (pr-str task-name)}))))
 
 (defn- nav-choices [sim]
   ; (log/info "nc now")
@@ -265,7 +275,7 @@
   [code :code segs])
 
 (defn- pretty-outbox [sim task-name & {:keys [render]}]
-  (let [{:as env :keys [tasks]} (pull-env sim)
+  (let [{:as env :keys [tasks]} @(sub sim ?env)
         outputs (get-in tasks [task-name :outputs])]
     ;; ???: dump segments button
     (if-not outputs none
@@ -278,7 +288,7 @@
         [render outputs]]])))
 
 (defn- pretty-inbox [sim task-name & {:keys [render]}]
-  (let [{:keys [tasks]} (pull-env sim)
+  (let [{:keys [tasks]} @(sub sim ?env)
         {::keys [import-uris]} @(sub sim ?import-uris)
         inbox (get-in tasks [task-name :inbox])]
     [re-com/v-box
@@ -300,7 +310,7 @@
       [render inbox]]]))
 
 (defn- pretty-task-box [sim task-name]
-  (let [env (pull-env sim)
+  (let [env @(sub sim ?env)
         {::keys [render]} @(sub sim ?job-expr ::expr [::render])
         task-type (get-in env [:tasks task-name :event :onyx.core/task-map :onyx/type])
         task-doc (get-in env [:tasks task-name :event :onyx.core/task-map :onyx/doc])
@@ -334,7 +344,7 @@
         [pretty-outbox sim task-name :render render-fn]]]))
 
 (defn- pretty-env [sim]
-  (let [{:as env :keys [sorted-tasks]} (pull-env sim)
+  (let [{:as env :keys [sorted-tasks]} @(sub sim ?env)
         {::keys [hidden-tasks]} @(sub sim ?hidden-tasks)]
     [re-com/v-box
      :class "onyx-env"
@@ -347,7 +357,7 @@
 
 (defn- summary [sim & {:keys [summary-fn]}]
   (let [summary-fn (or summary-fn api/env-summary)
-        env (pull-env sim)]
+        env @(sub sim ?env)]
     [code :class "onyx-panel" :code (summary-fn env)]))
 
 (defn- raw-env [sim]
@@ -361,7 +371,7 @@
       [summary sim :summary-fn (when-not only-summary? identity)]]]))
 
 (defn- next-action [sim]
-  (let [{:as env :keys [next-action]} (pull-env sim)]
+  (let [{:as env :keys [next-action]} @(sub sim ?env)]
     [re-com/h-box
       :gap "1ch"
       :children

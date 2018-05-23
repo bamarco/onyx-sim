@@ -2,6 +2,7 @@
   (:require
     [com.stuartsierra.component :as component]
     [taoensso.timbre :as log]
+    [onyx.sim.substitutions :refer [substitute extract-db extract-inputs]]
     #?(:cljs [reagent.core :as r :refer [atom]])
     #?(:cljs [reagent.ratom :as ratom])
     [onyx.sim.kb :as kb]))
@@ -37,13 +38,16 @@
 
 (defmethod kb/q :onyx.sim.kb.ratom/cursor
   [kbs {:as q-expr :onyx.sim.kb.ratom/keys [in path]} & {:as lk}]
-  (let [state (get kbs (get in '$))]
+  (let [inputs (extract-inputs kbs q-expr lk)
+        path (substitute path inputs)
+        state (extract-db kbs q-expr)]
     (get-in state path)))
 
 (defmethod kb/sub :onyx.sim.kb.ratom/cursor
   [kb {:as q-expr :onyx.sim.kb.ratom/keys [in path]} & {:as lk}]
-  (let [ratom (:ratom (get kb (get in '$)))]
-    ;; TODO: in substitutions
+  (let [inputs (extract-inputs kb q-expr lk)
+        path (substitute path inputs)
+        ratom (:ratom (extract-db kb q-expr))]
     #?(:cljs (ratom/cursor ratom path)
        :clj (let [p (promise)]
               (deliver p (get-in @ratom path))

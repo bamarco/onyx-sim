@@ -33,7 +33,7 @@
 
 (def ?envs
   '{:onyx.sim.kb/type :onyx.sim.kb.ratom/cursor
-    :onyx.sim.kb.ratom/in {$ :state}
+    :onyx.sim.kb/in {$ :state}
     :onyx.sim.kb.ratom/path [:envs]})
 
 (defn go-schedule-jobs! [{:keys [knowbase control>]}]
@@ -83,7 +83,7 @@
          :db [job]}))
     true))
 
-(defrecord OnyxSimulator [knowbase control> event> job-id]
+(defrecord OnyxSimulator [knowbase control> event>]
   component/Lifecycle
   (start [component]
     (let [sim
@@ -97,10 +97,8 @@
   (stop [component]
     (go (>! control> ::kill))
     (assoc component
-      :envs nil
       :control> nil
-      :event> nil
-      :job-id nil)))
+      :event> nil)))
 
 (defn new-simulator
   ([]
