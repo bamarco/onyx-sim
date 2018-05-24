@@ -195,6 +195,16 @@
 (defn update-setting! [sim attr value]
   (update-eav! sim [::name ::settings] attr value))
 
+(defn hide-task! [{:keys [knowbase]} task-name]
+  (kb/transact!
+    knowbase
+    (fn [kbs]
+      (let [{::keys [hidden-tasks]} (kb/q kbs ?hidden-tasks)]
+        {:db [[:db/add 
+               [:onyx/job-id (::job-id kbs)]
+               ::hidden-tasks
+               (conj (or hidden-tasks #{}) task-name)]]}))))
+
 ;;;
 ;;; Simulator Components
 ;;;
@@ -290,7 +300,8 @@
 (defn- pretty-inbox [sim task-name & {:keys [render]}]
   (let [{:keys [tasks]} @(sub sim ?env)
         {::keys [import-uris]} @(sub sim ?import-uris)
-        inbox (get-in tasks [task-name :inbox])]
+        inbox (get-in tasks [task-name :inbox])
+        import-uri (first import-uris)]
     [re-com/v-box
      :class "onyx-inbox"
      :children
@@ -302,11 +313,16 @@
          :label "Inbox"
          :level :level3]
         [re-com/input-text
-         :model (str (first import-uris))
-         :on-change #()]
+         :model (str import-uri)
+         :on-change #(update-eav! sim
+                      [:onyx/job-id (get-in sim [:knowledge ::job-id])]
+                      ::import-uris (-> import-uris
+                                      (disj import-uri)
+                                      (conj %)))]
         [re-com/button
          :label "Import Segments"
          :on-click #()]]]
+                     
       [render inbox]]]))
 
 (defn- pretty-task-box [sim task-name]
@@ -337,7 +353,7 @@
               :level :level2]
             [re-com/button
               :label "Hide"
-              :on-click #()]]]
+              :on-click #(hide-task! sim task-name)]]]
         (when task-doc
           [re-com/label :style {:color :white} :label task-doc])
         [pretty-inbox sim task-name :render render-fn]
