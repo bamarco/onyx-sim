@@ -23,6 +23,7 @@
 (def tick            onyx/tick)
 (def drain           onyx/drain)
 (def new-segment     onyx/new-segment)
+(def drained? onyx/drained?)
 
 (def schema-idents
   [
@@ -160,6 +161,18 @@
     (onyx/tick env)
     (range 1000)))
 
+(defn- pending-outputs? [task-state]
+  (not (empty? (:outputs task-state))))
+
+(defn- flushable? [env]
+  (some
+    pending-outputs?
+    (eduction
+      (comp
+        (map second)
+        (filter output-plugin?))
+      (:tasks env))))
+
 (defn out
   "Returns {output-task output-segments} of onyx env presumably after draining."
   [env]
@@ -178,7 +191,7 @@
   (satisfies? ReadPort obj))
 
 (defn- go-batch 
-  "from https://stackoverflow.com/questions/33620388/how-to-properly-batch-messages-with-core-async"
+  "borrows from https://stackoverflow.com/questions/33620388/how-to-properly-batch-messages-with-core-async"
   [in out max-time max-count]
   (let [lim-1 (dec max-count)]
     (async/go-loop [buf [] t (async/timeout max-time)]
@@ -317,6 +330,7 @@
     (:tasks env)))
 
 (defn go-write-plugins! [env & {:as opts :keys [timeout] :or {timeout 1000}}]
+  ;; ???: park if plugins not ready?
   (go-loop [env env
             outs (filter
                    (fn [[_ task-state]]
@@ -328,6 +342,10 @@
         (if (<! (go-write-batch! task-state))
            (recur (assoc-in env [:tasks task-name :outputs] []) (rest outs))
            false))))) ;; ???: false as error?
+
+(defn go-poll-plugins! [env]
+  (let [inputs (poll-plugins! env)]
+    (new-inputs env inputs)))
 
 (defn polls-closed? [env]
   (empty?
@@ -342,6 +360,10 @@
 
 (defmulti transition-env
   (fn [env action-data]
+    ; (log/info "transition-env event:" 
+    ;   (if (keyword? action-data)
+    ;     action-data
+    ;     (or (::event action-data) (:event action-data) :default)))
     (if (keyword? action-data)
        action-data
       (or (::event action-data)
@@ -355,9 +377,98 @@
          (<! maybe-chan#)
          maybe-chan#))))
 
+(defn go-transitions [env transitions]
+  (go-loop [env env
+            transitions transitions]
+    ; (log/info "tss" (first transitions))
+    (if (empty? transitions)
+      env
+      (let [env (<transition-env env (first transitions))]
+        (recur env (rest transitions))))))
+
+(defn clear-signals [env]
+  (dissoc env ::signal))
+
+(defn mark-completed [{:as env ::keys [signal]}]
+  (if (= ::complete signal)
+    (assoc env ::completed? true)
+    env))
+
+(defn completed? [{:as env ::keys [completed?]}]
+  completed?)
+
+(defn go-env! [env]
+  (go
+    (if (polls-closed? env)
+      (do
+        (log/debug "Polls closed completing job...")
+        (assoc env ::signal ::complete))
+      (let [inputs (poll-plugins! env)]
+        (if (empty? inputs)
+          (assoc env ::signal ::pause)
+          (<!
+            (go-transitions
+              env
+              [{::event ::new-inputs
+                ::inputs inputs}
+               ::go-drain
+               ::go-write!])))))))
+
+(defn go-cycle [env & {:as opts :keys [break-point] :or {break-point :lifecycle/read-batch}}]
+  (go-loop [env env]
+    (let [env (<transition-env env ::go-tick)]
+      ; (log/info "cycle next-action" (:next-action env) (drained? env))
+      (if (= (:next-action env) break-point)
+        env
+        (recur env)))))
+
+(defn status [env]
+  (cond
+    (not (drained? env)) ::in-flight
+    (flushable? env) ::flush-ready
+    (polls-closed? env) ::polls-closed
+    :else ::polls-ready))
+
+(defn go-step
+  ""
+  [env]
+  (let [status (status env)]
+    ; (log/info "go-step status" status)
+    (case status
+      ::in-flight (go-cycle env)
+      ::flush-ready (go-write-plugins! env)
+      ::polls-ready (go-poll-plugins! env)
+      env)))
+
+(defn go-job!
+  "Initializes the job and drains the job asynchronously"
+  [job & opts]
+  (go-loop [env (init job)]
+    (let [{:as env ::keys [signal]} (<! (go-env! env))]
+      (case signal 
+        ::complete
+        env
+        ::pause
+        (do
+          (async/timeout 100)
+          (recur env))
+        (recur env)))))
+
+(defn go-envs! [envs]
+  (go-loop [envs-before envs
+            envs-after []]
+    (if (empty? envs-before)
+      envs-after
+      (let [env (<! (go-env! (first envs-before)))]
+        (recur (rest envs-before) (conj envs-after env))))))
+
+
+;;;
+;;; Transitions
+;;;
 (defmethod transition-env ::init
-  [_ {::keys [job]}]
-  (init job))
+  [env {::keys [job]}]
+  (or env (init job)))
 
 (defmethod transition-env ::tick
   [env {::keys [times]}]
@@ -392,6 +503,14 @@
   [env action]
   (go-drain env))
 
+(defmethod transition-env ::go-step
+  [env action]
+  (go-step env))
+
+(defmethod transition-env ::go-cycle
+  [env action]
+  (go-step env))
+
 (defmethod transition-env ::go-write!
   [env action]
   (go-write-plugins! env))
@@ -400,68 +519,8 @@
   [env action]
   ;; treats unknown transitions as noop
   (if (nil? env)
-    ;; if env is nil action must be an env
+    ;; ???: if env is nil action must be an env
     action
     (do
-      (log/info "Treating transition " action " as a noop")
+      (log/warn "Treating transition " action " as a noop")
       env)))
-
-(defn go-transitions [transitions]
-  (go-loop [env nil
-            transitions transitions]
-    ; (log/info "tss" (first transitions))
-    (if (empty? transitions)
-      env
-      (let [env (<transition-env env (first transitions))]
-        (recur env (rest transitions))))))
-
-(defn clear-signals [env]
-  (dissoc env ::signal))
-
-(defn mark-completed [{:as env ::keys [signal]}]
-  (if (= ::complete signal)
-    (assoc env ::completed? true)
-    env))
-
-(defn completed? [{:as env ::keys [completed?]}]
-  completed?)
-
-(defn go-env! [env]
-  (go
-    (if (polls-closed? env)
-      (do
-        (log/debug "Polls closed completing job...")
-        (assoc env ::signal ::complete))
-      (let [inputs (poll-plugins! env)]
-        (if (empty? inputs)
-          (assoc env ::signal ::pause)
-          (<!
-            (go-transitions
-              [env
-               {::event ::new-inputs
-                ::inputs inputs}
-               ::go-drain
-               ::go-write!])))))))
-
-(defn go-job!
-  "Initializes the job and drains the job asynchronously"
-  [job & opts]
-  (go-loop [env (init job)]
-    (let [{:as env ::keys [signal]} (<! (go-env! env))]
-      (case signal 
-        ::complete
-        env
-        ::pause
-        (do
-          (async/timeout 100)
-          (recur env))
-        (recur env)))))
-
-(defn go-envs! [envs]
-  (go-loop [envs-before envs
-            envs-after []]
-    (if (empty? envs-before)
-      envs-after
-      (let [env (<! (go-env! (first envs-before)))]
-        (recur (rest envs-before) (conj envs-after env))))))
-

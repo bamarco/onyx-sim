@@ -137,3 +137,6 @@
     (apply merge-with deep-merge maps)
     (last maps)))
 
+(defn third [coll]
+  (nth coll 2))
+

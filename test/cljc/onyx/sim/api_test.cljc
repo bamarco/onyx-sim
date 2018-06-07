@@ -1,7 +1,7 @@
 (ns onyx.sim.api-test
   (:require 
-    [onyx.sim.api :as sim]
-    [onyx.sim.components.simulator :refer [submit-job]]
+    [onyx.sim.api :as api]
+    [onyx.sim.components.sim :refer [submit-job]]
     [com.stuartsierra.component :as component]
     [onyx.sim.test-system :as test-system]
     [onyx.plugin.seq]
@@ -148,22 +148,22 @@
       :onyx.sim.lifecycle/inject {:core.async/chan [:out>]}}]})
 
 (deftest test-new-inputs
-  (let [env (-> (sim/init identity-job)
-                (sim/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]}))]
+  (let [env (-> (api/init identity-job)
+                (api/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]}))]
     (is (get-in env [:tasks :in :inbox]) [{:hello 1} {:hello 2} {:hello 3}])))
 
 (deftest test-remove-outputs
-  (let [env (-> (sim/init identity-job)
-                (sim/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]})
-                (sim/drain)
-                (sim/remove-outputs {:out [{:hello 1}]}))]
+  (let [env (-> (api/init identity-job)
+                (api/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]})
+                (api/drain)
+                (api/remove-outputs {:out [{:hello 1}]}))]
     (is (get-in env [:tasks :out :outputs]) [{:hello 2} {:hello 3}])))
 
 (deftest test-drain
   (let [env (-> identity-job
-              (sim/init)
-              (sim/new-inputs {:in [{:hello 1}]})
-              (sim/drain))]
+              (api/init)
+              (api/new-inputs {:in [{:hello 1}]})
+              (api/drain))]
     (is
       (=
         (get-in env [:tasks :out :outputs])
@@ -171,13 +171,13 @@
 
 (deftest test-go-drain
   (let [env-chan (-> identity-job
-                    (sim/init)
-                    (sim/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]})
-                    (sim/go-drain))
+                    (api/init)
+                    (api/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]})
+                    (api/go-drain))
         async-env-chan (-> identity-async-job
-                          (sim/init)
-                          (sim/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]})
-                          (sim/go-drain))]
+                          (api/init)
+                          (api/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]})
+                          (api/go-drain))]
     (test-async
       (test-within 1000
         (go 
@@ -196,9 +196,9 @@
                 [{:hello 1} {:hello 2} {:hello 3}]))))))))
 
 (deftest test-go-tick
-  (let [env-chan (-> (sim/init identity-async-job)
-                     (sim/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]})
-                     (sim/go-tick 500))]
+  (let [env-chan (-> (api/init identity-async-job)
+                     (api/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]})
+                     (api/go-tick 500))]
     (test-async
       (test-within 1000
         (go
@@ -208,20 +208,32 @@
                 (get-in env [:tasks :out :outputs])
                 [{:hello 1} {:hello 2} {:hello 3}]))))))))
 
+(deftest test-go-cycle
+  (let [env (-> (api/init identity-async-job)
+                (api/new-inputs {:in [{:hello 1} {:hello 2} {:hello 3}]}))]
+    (test-async
+      (test-within 1000
+        (go
+          (let [env (<! (api/go-transitions env [:onyx.sim.api/go-cycle :onyx.sim.api/go-cycle]))]
+            (is
+              (=
+                (get-in env [:tasks ::identity :inbox])
+                [{:hello 1} {:hello 2} {:hello 3}]))))))))
+
 (deftest test-poll-job
   (let [env (-> (seq->out-job :batch-size 20)
-              (sim/init)
-              (sim/transition-env :onyx.sim.api/poll!))
+              (api/init)
+              (api/transition-env :onyx.sim.api/poll!))
         _ (is (= 
                 (get-in env [:tasks :in :inbox]) 
                 [{:hello 1} {:hello 2} {:hello 3}]))
         batch-env (-> (seq->out-job :batch-size 2)
-                      (sim/init)
-                      (sim/transition-env :onyx.sim.api/poll!))]
+                      (api/init)
+                      (api/transition-env :onyx.sim.api/poll!))]
     (test-async
       (test-within 1000
         (go
-          (let [env (sim/<transition-env env :onyx.sim.api/go-drain)]
+          (let [env (api/<transition-env env :onyx.sim.api/go-drain)]
             (is
               (= 
                 (get-in env [:tasks :out :outputs])
@@ -229,7 +241,7 @@
     (test-async
       (test-within 1000
         (go
-          (let [env (sim/<transition-env batch-env :onyx.sim.api/go-drain)]
+          (let [env (api/<transition-env batch-env :onyx.sim.api/go-drain)]
             (is
               (=
                 (get-in env [:tasks :out :outputs])
@@ -237,13 +249,13 @@
 
 (deftest test-chan-plugin
   (let [env (-> (seq->chan-job 42)
-                (sim/init)
-                (sim/transition-env :onyx.sim.api/poll!))]
+                (api/init)
+                (api/transition-env :onyx.sim.api/poll!))]
     (test-async
       (test-within 1000
         (go
-          (let [drained-env (sim/<transition-env env :onyx.sim.api/go-drain)
-                flushed-env (sim/<transition-env drained-env :onyx.sim.api/go-write!)]
+          (let [drained-env (api/<transition-env env :onyx.sim.api/go-drain)
+                flushed-env (api/<transition-env drained-env :onyx.sim.api/go-write!)]
             (is
               (=
                 (get-in drained-env [:tasks :out :outputs])
@@ -263,7 +275,7 @@
                 [{:hello 1} {:hello 2} {:hello 3}]))))))))
 
 (deftest test-go-job
-  (let [env-chan (sim/go-job! (seq->out-job))]
+  (let [env-chan (api/go-job! (seq->out-job))]
     (test-async
       (test-within 1000
         (go
@@ -279,12 +291,12 @@
         job (lc/bind-resources chan->chan-job {:in>  in>
                                                :in-buf (atom {})
                                                :out> out>})
-        _ (sim/go-job! job)
+        _ (api/go-job! job)
         _ (go
             ; (prn "putting hellos onto chan") 
             (async/onto-chan in> [{:hello 1} {:hello 2} {:hello 3}]))]
     (test-async
-      (test-within 2000
+      (test-within 1000
         (go
           ; (prn "Starting go block")
           (let [out1 (<! out>)
@@ -301,17 +313,17 @@
 
 (deftest test-submit-job
   (let [in> (async/chan)
-        out> (async/chan)
+        out> (async/chan 100)
         job (lc/bind-resources chan->chan-job {:in>  in>
                                                :in-buf (atom {})
                                                :out> out>})
         in2> (async/chan)
-        out2> (async/chan)
+        out2> (async/chan 100)
         job2 (lc/bind-resources chan->chan-job {:in>  in2>
                                                 :in-buf (atom {})
                                                 :out> out2>})
         sys (component/start (test-system/create-system))
-        sim (:simulator sys)]
+        sim (:sim sys)]
     (submit-job sim job)
     (submit-job sim job2)
     (go (async/onto-chan in> [{:hello 1} {:hello 2} {:hello 3}]))

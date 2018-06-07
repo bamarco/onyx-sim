@@ -14,17 +14,17 @@
             [onyx.sim.dat-view :as dat.view]))
             ; [onyx.sim.core :as sim]))
 
-(defn go-event! [{:as sim :keys [knowbase]} event>]
-  (let [control> (async/chan)]
-    (go-loop []
-      (let [[ch event] (alts! (<! event>) control>)]
-        (if (= ch control>)
-          (when (not= event ::kill)
-            (log/warn "unknown control>" event)
-            (recur))
-          (do
-            (kb/transact! sim #(ui/handler % event))
-            (recur)))))))
+; (defn go-event! [{:as sim :keys [knowbase]} event>]
+;   (let [control> (async/chan)]
+;     (go-loop []
+;       (let [[ch event] (alts! (<! event>) control>)]
+;         (if (= ch control>)
+;           (when (not= event ::kill)
+;             (log/warn "unknown control>" event)
+;             (recur))
+;           (do
+;             (kb/transact! sim #(ui/handler % event))
+;             (recur)))))))
 
 (defn show-ui [sim]
   [ui/selector sim])

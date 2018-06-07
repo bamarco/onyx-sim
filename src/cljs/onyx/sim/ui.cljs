@@ -4,12 +4,14 @@
     [taoensso.timbre :as log]
     [posh.reagent :as posh]
     [onyx.sim.api :as api]
+    [onyx.sim.event2 :as event]
     [onyx.sim.kb :as kb]
+    [onyx.sim.sub :as sub]
     [datascript.core :as d]
     [onyx.sim.kb :as kb]
     [reagent.ratom :as ratom]
     [clojure.core.async :as async :refer [go go-loop >! <! alts!]]
-    [onyx.sim.utils :as utils :refer [cat-into deref-or-value ppr-str mapply]]))
+    [onyx.sim.utils :as utils :refer [third deref-or-value ppr-str mapply]]))
 
 (def schema-idents
   [{:db/ident ::name
@@ -41,97 +43,11 @@
 
 (def ^:private task-colors
   {:function sim-pale-blue
-    :input onyx-gray
-    :output onyx-green})
-
-;;;
-;;; Queries
-;;;
-; (defn q [q-expr {:keys [q db]} & ins]
-;   (apply q q-expr db ins))
-
-; (defn pull [{:keys [db pull]} pull-expr eid]
-;   (pull db pull-expr eid))
+   :input onyx-gray
+   :output onyx-green})
 
 (defn sub [{:as sim :keys [knowbase]} & args]
   (apply kb/sub knowbase args))
-
-(def ?settings
-  '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
-    :onyx.sim.kb.datascript/pull-expr [*]
-    :onyx.sim.kb/in {$ :db}
-    :onyx.sim.kb.datascript/eid [::name ::settings]})
-
-(def ?jobs
-  '{:onyx.sim.kb/type :onyx.sim.kb.datascript/q
-    :onyx.sim.kb.datascript/find [?job-id]
-    :onyx.sim.kb/in {$ :db}
-    :onyx.sim.kb.datascript/where [[_ :onyx/job-id ?job-id]]})
-
-(def ?job-expr
-  '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
-    :onyx.sim.kb.datascript/pull-expr ?expr
-    :onyx.sim.kb.datascript/eid [:onyx/job-id ?job-id]
-    :onyx.sim.kb/in {$ :db
-                     ?job-id ::job-id
-                     ?expr ::expr}})
-
-(def ?animating
-  '{:onyx.sim.kb/type :onyx.sim.kb.datascript/q
-    :onyx.sim.kb.datascript/find [?job .]
-    :onyx.sim.kb/in {$ :db}
-    :onyx.sim.kb.datascript/where [[?job ::animating? true]]})
-
-(def ?hidden-tasks
-  '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
-    :onyx.sim.kb.datascript/pull-expr [::hidden-tasks]
-    :onyx.sim.kb.datascript/eid [:onyx/job-id ?job-id]
-    :onyx.sim.kb/in {$ :db
-                     ?job-id ::job-id}})
-
-(def ?import-uris
-  '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
-    :onyx.sim.kb.datascript/pull-expr [::import-uris]
-    :onyx.sim.kb.datascript/eid [:onyx/job-id ?job-id]
-    :onyx.sim.kb/in {$ :db
-                     ?job-id ::job-id}})
-
-(def ?sorted-tasks
-  '{:onyx.sim.kb/type :onyx.sim.kb.ratom/cursor
-    :onyx.sim.kb/in {$ :state
-                     ?job-id ::job-id}
-    :onyx.sim.kb.ratom/path [:envs ?job-id :sorted-tasks]})
-
-(def ?env
-  '{:onyx.sim.kb/type :onyx.sim.kb.ratom/cursor
-    :onyx.sim.kb/in {$ :state
-                     ?job-id ::job-id}
-    :onyx.sim.kb.ratom/path [:envs ?job-id]})
-
-;;;
-;;; Subscriptions
-;;;
-(defn- sorted-tasks [{:keys [knowbase]}]
-  (let [sorted-tasks @(kb/sub knowbase ?sorted-tasks)]
-    (vec
-      (for [task-name sorted-tasks]
-        {:id task-name
-         :label (pr-str task-name)}))))
-
-(defn- nav-choices [sim]
-  ; (log/info "nc now")
-  (let [jobs @(sub sim ?jobs)
-        sims (for [[job-id] jobs]
-               {:id job-id
-                :label (or (::title @(sub sim ?job-expr ::expr [::title] ::job-id job-id)) job-id)})]
-    (cat-into
-     [{:id ::settings
-       :label [:i {:class "zmdi zmdi-settings"}]}]
-     sims
-     [{:id ::jobs
-       :label [:i {:class "zmdi zmdi-widgets"}]}
-      {:id ::db-view
-       :label [:i {:class "zmdi zmdi-assignment"}]}])))
 
 ;;;
 ;;; Re-com Style Components
@@ -180,36 +96,10 @@
     :label label])
 
 ;;;
-;;; Events
-;;;
-(defmulti handler
-  (fn [kbs cofx]
-    (::intent cofx)))
-
-(defn update-eav! [{:keys [knowbase]} eid attr value]
-  (kb/transact!
-    knowbase
-    (fn [kbs]
-      {:db [[:db/add eid attr value]]})))
-
-(defn update-setting! [sim attr value]
-  (update-eav! sim [::name ::settings] attr value))
-
-(defn hide-task! [{:keys [knowbase]} task-name]
-  (kb/transact!
-    knowbase
-    (fn [kbs]
-      (let [{::keys [hidden-tasks]} (kb/q kbs ?hidden-tasks)]
-        {:db [[:db/add 
-               [:onyx/job-id (::job-id kbs)]
-               ::hidden-tasks
-               (conj (or hidden-tasks #{}) task-name)]]}))))
-
-;;;
 ;;; Simulator Components
 ;;;
 (defn logo [sim]
-  (let [animating? @(sub sim ?animating)]
+  (let [animating? @(sub sim sub/?animating)]
     ; (log/info "animating?" animating?)
     [active-logo
       :img "ns/onyx/onyx-logo.png"
@@ -217,7 +107,7 @@
       :label "nyx-sim (alpha)"]))
 
 (defn- env-style [sim]
-  (let [{::keys [only-summary? render-segments? env-style]} @(sub sim ?settings)
+  (let [{::keys [only-summary? render-segments? env-style]} @(sub sim sub/?settings)
         pretty? (= env-style ::pretty-env)
         raw?    (= env-style ::raw-env)]
     [re-com/v-box
@@ -228,25 +118,25 @@
           :label "Pretty"
           :model env-style
           :value ::pretty-env
-          :on-change #(update-setting! sim ::env-style ::pretty-env)]
+          :on-change #(event/update-setting! sim ::env-style ::pretty-env)]
         [re-com/checkbox
           :label "(Render Segments)"
           :model render-segments?
           :disabled? raw?
-          :on-change #(update-setting! sim ::render-segments? (not render-segments?))]
+          :on-change #(event/update-setting! sim ::render-segments? (not render-segments?))]
         [re-com/radio-button
           :label "Raw"
           :model env-style
           :value ::raw-env
-          :on-change #(update-setting! sim ::env-style ::raw-env)]
+          :on-change #(event/update-setting! sim ::env-style ::raw-env)]
         [re-com/checkbox
           :label "(Only Summary)"
           :model only-summary?
           :disabled? pretty?
-          :on-change #(update-setting! sim ::only-summary? (not only-summary?))]]]))
+          :on-change #(event/update-setting! sim ::only-summary? (not only-summary?))]]]))
 
 (defn- settings [{:as sim :keys [conn knowbase]}]
-  (let [{::keys [task-hider? description? next-action?]} @(sub sim ?settings)]
+  (let [{::keys [task-hider? description? next-action?]} @(sub sim sub/?settings)]
     [re-com/v-box
       :children
       [
@@ -256,20 +146,20 @@
         [re-com/checkbox 
           :model task-hider?
           :label "Show Task Hider"
-          :on-change #(update-setting! sim ::task-hider? (not task-hider?))]
+          :on-change #(event/update-setting! sim ::task-hider? (not task-hider?))]
         [re-com/checkbox 
           :model description?
           :label "Show Job Description"
-          :on-change #(update-setting! sim ::description? (not description?))]
+          :on-change #(event/update-setting! sim ::description? (not description?))]
         [re-com/checkbox 
           :model next-action?
           :label "Show Next Action"
-          :on-change #(update-setting! sim ::next-action? (not next-action?))]
+          :on-change #(event/update-setting! sim ::next-action? (not next-action?))]
         [env-style sim]]]))
 
-(defn- hidden-tasks-view [sim]
-  (let [choices (or (vec (sorted-tasks sim)) [])
-        {::keys [hidden-tasks]} @(sub sim ?hidden-tasks)
+(defn- hidden-tasks-view [{:as sim :keys [knowbase]}]
+  (let [choices (or (vec (sub/sorted-task-labels knowbase)) [])
+        {::keys [hidden-tasks]} @(sub sim sub/?hidden-tasks)
         hidden-tasks (or hidden-tasks #{})
         job-id (get-in sim [:knowbase ::job-id])]
     [re-com/v-box
@@ -279,13 +169,13 @@
         [re-com/selection-list
           :choices choices
           :model hidden-tasks
-          :on-change #(update-eav! sim [:onyx/job-id job-id] ::hidden-tasks %)]]]))
+          :on-change #(event/update-eav! sim [:onyx/job-id job-id] ::hidden-tasks %)]]]))
 
 (defn- default-render [segs]
   [code :code segs])
 
 (defn- pretty-outbox [sim task-name & {:keys [render]}]
-  (let [{:as env :keys [tasks]} @(sub sim ?env)
+  (let [{:as env :keys [tasks]} @(sub sim sub/?env)
         outputs (get-in tasks [task-name :outputs])]
     ;; ???: dump segments button
     (if-not outputs none
@@ -298,8 +188,8 @@
         [render outputs]]])))
 
 (defn- pretty-inbox [sim task-name & {:keys [render]}]
-  (let [{:keys [tasks]} @(sub sim ?env)
-        {::keys [import-uris]} @(sub sim ?import-uris)
+  (let [{:keys [tasks]} @(sub sim sub/?env)
+        {::keys [import-uris]} @(sub sim sub/?import-uris)
         inbox (get-in tasks [task-name :inbox])
         import-uri (first import-uris)]
     [re-com/v-box
@@ -314,7 +204,7 @@
          :level :level3]
         [re-com/input-text
          :model (str import-uri)
-         :on-change #(update-eav! sim
+         :on-change #(event/update-eav! sim
                       [:onyx/job-id (get-in sim [:knowledge ::job-id])]
                       ::import-uris (-> import-uris
                                       (disj import-uri)
@@ -326,12 +216,12 @@
       [render inbox]]]))
 
 (defn- pretty-task-box [sim task-name]
-  (let [env @(sub sim ?env)
-        {::keys [render]} @(sub sim ?job-expr ::expr [::render])
+  (let [env @(sub sim sub/?env)
+        {::keys [render]} @(sub sim sub/?job-expr ::expr [::render])
         task-type (get-in env [:tasks task-name :event :onyx.core/task-map :onyx/type])
         task-doc (get-in env [:tasks task-name :event :onyx.core/task-map :onyx/doc])
         local-render (get-in env [:tasks task-name :event :onyx.core/task-map ::render])
-        {::keys [render-segments?]} @(sub sim ?settings)
+        {::keys [render-segments?]} @(sub sim sub/?settings)
         render-fn (if render-segments?
                     (or local-render render default-render)
                     default-render)]
@@ -353,15 +243,15 @@
               :level :level2]
             [re-com/button
               :label "Hide"
-              :on-click #(hide-task! sim task-name)]]]
+              :on-click #(event/hide-task! sim task-name)]]]
         (when task-doc
           [re-com/label :style {:color :white} :label task-doc])
         [pretty-inbox sim task-name :render render-fn]
         [pretty-outbox sim task-name :render render-fn]]]))
 
 (defn- pretty-env [sim]
-  (let [{:as env :keys [sorted-tasks]} @(sub sim ?env)
-        {::keys [hidden-tasks]} @(sub sim ?hidden-tasks)]
+  (let [{:as env :keys [sorted-tasks]} @(sub sim sub/?env)
+        {::keys [hidden-tasks]} @(sub sim sub/?hidden-tasks)]
     [re-com/v-box
      :class "onyx-env"
      :children
@@ -373,11 +263,11 @@
 
 (defn- summary [sim & {:keys [summary-fn]}]
   (let [summary-fn (or summary-fn api/env-summary)
-        env @(sub sim ?env)]
+        env @(sub sim sub/?env)]
     [code :class "onyx-panel" :code (summary-fn env)]))
 
 (defn- raw-env [sim]
-  (let [{::keys [only-summary?]} @(sub sim ?settings)]
+  (let [{::keys [only-summary?]} @(sub sim sub/?settings)]
     [re-com/v-box
      :class "onyx-env"
      :children
@@ -387,7 +277,7 @@
       [summary sim :summary-fn (when-not only-summary? identity)]]]))
 
 (defn- next-action [sim]
-  (let [{:as env :keys [next-action]} @(sub sim ?env)]
+  (let [{:as env :keys [next-action]} @(sub sim sub/?env)]
     [re-com/h-box
       :gap "1ch"
       :children
@@ -399,12 +289,12 @@
           :label (str next-action)]]]))
 
 (defn- description [sim]
-  (let [{:onyx/keys [doc]} @(sub sim ?job-expr ::expr [:onyx/doc])]
+  (let [{:onyx/keys [doc]} @(sub sim sub/?job-expr ::expr [:onyx/doc])]
     [re-com/p doc]))
 
 (defn- action-bar [sim]
   ;; FIXME: running?
-  (let [running? @(sub sim ?animating)]
+  (let [running? @(sub sim sub/?animating)]
     [re-com/h-box
       :gap ".5ch"
       :children
@@ -426,7 +316,7 @@
           :on-click #()]]]))
 
 (defn job-view [sim]
-  (let [{::keys [env-style next-action? task-hider? description?]} @(sub sim ?settings)]
+  (let [{::keys [env-style next-action? task-hider? description?]} @(sub sim sub/?settings)]
     [re-com/v-box
       :children
       [
@@ -445,7 +335,7 @@
 
 (defn manage-job-view [sim]
   (let [{:keys [onyx/job-id onyx/doc ::title :onyx.core/workflow]}
-        @(sub sim ?job-expr ::expr [:onyx.core/workflow :onyx/job-id :onyx/doc ::title])]
+        @(sub sim sub/?job-expr ::expr [:onyx.core/workflow :onyx/job-id :onyx/doc ::title])]
     [re-com/v-box
       :children
       [
@@ -459,7 +349,7 @@
         [code :code workflow]]]))
 
 (defn manage-jobs [sim]
-  (let [jobs @(sub sim ?jobs)]
+  (let [jobs @(sub sim sub/?jobs)]
     [re-com/v-box
       :children
       (into
@@ -472,9 +362,6 @@
               [manage-job-view (assoc-in sim [:knowbase ::job-id] job-id)]))
           (interpose [re-com/gap :size "1rem"]))
         jobs)]))
-
-(defn third [coll]
-  (nth coll 2))
 
 (defn- codit [item]
   [code :code item])
@@ -531,19 +418,19 @@
   [job-view (assoc-in sim [:knowbase ::job-id] job-id)])
 
 (defn selected [sim]
-  (let [{::keys [selected-nav]} @(sub sim ?settings)]
+  (let [{::keys [selected-nav]} @(sub sim sub/?settings)]
     [re-com/box
      :class "onyx-sim"
      :child
       [display-selected sim selected-nav]]))
 
-(defn nav-bar [sim]
-  (let [choices (nav-choices sim)
-        {:as ss ::keys [selected-nav]} @(sub sim ?settings)]
+(defn nav-bar [{:as sim :keys [knowbase]}]
+  (let [choices (sub/nav-choices knowbase)
+        {:as ss ::keys [selected-nav]} @(sub sim sub/?settings)]
     [re-com/horizontal-bar-tabs
       :tabs choices
       :model selected-nav
-      :on-change (partial update-setting! sim ::selected-nav)]))
+      :on-change (partial event/update-setting! sim ::selected-nav)]))
 
 (defn selector [sim]
   [re-com/v-box
