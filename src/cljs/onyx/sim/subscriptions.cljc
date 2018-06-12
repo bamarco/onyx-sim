@@ -1,4 +1,4 @@
-(ns onyx.sim.sub
+(ns onyx.sim.subscriptions
   (:require
     [onyx.sim.kb :as kb]
     [onyx.sim.utils :refer [cat-into]]))
@@ -6,41 +6,41 @@
 (def ?settings
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
     :onyx.sim.kb.datascript/pull-expr [*]
-    :onyx.sim.kb/in {$ :db}
+    :onyx.sim.kb/in {$ :datascript}
     :onyx.sim.kb.datascript/eid [:onyx.sim.ui/name :onyx.sim.ui/settings]})
 
 (def ?jobs
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/q
     :onyx.sim.kb.datascript/find [?job-id]
-    :onyx.sim.kb/in {$ :db}
+    :onyx.sim.kb/in {$ :datascript}
     :onyx.sim.kb.datascript/where [[_ :onyx/job-id ?job-id]]})
 
 (def ?job-expr
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
     :onyx.sim.kb.datascript/pull-expr ?expr
     :onyx.sim.kb.datascript/eid [:onyx/job-id ?job-id]
-    :onyx.sim.kb/in {$ :db
+    :onyx.sim.kb/in {$ :datascript
                      ?job-id :onyx.sim.ui/job-id
                      ?expr :onyx.sim.ui/expr}})
 
 (def ?animating
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/q
     :onyx.sim.kb.datascript/find [?job .]
-    :onyx.sim.kb/in {$ :db}
+    :onyx.sim.kb/in {$ :datascript}
     :onyx.sim.kb.datascript/where [[?job :onyx.sim.ui/animating? true]]})
 
 (def ?hidden-tasks
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
     :onyx.sim.kb.datascript/pull-expr [:onyx.sim.ui/hidden-tasks]
     :onyx.sim.kb.datascript/eid [:onyx/job-id ?job-id]
-    :onyx.sim.kb/in {$ :db
+    :onyx.sim.kb/in {$ :datascript
                      ?job-id :onyx.sim.ui/job-id}})
 
 (def ?import-uris
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
     :onyx.sim.kb.datascript/pull-expr [:onyx.sim.ui/import-uris]
     :onyx.sim.kb.datascript/eid [:onyx/job-id ?job-id]
-    :onyx.sim.kb/in {$ :db
+    :onyx.sim.kb/in {$ :datascript
                      ?job-id :onyx.sim.ui/job-id}})
 
 (def ?sorted-tasks
@@ -62,23 +62,36 @@
 ;;;     * More data driven. These fns should eventually look as much like the queries above as possible
 ;;;     * Flexible. These fns should work with both queries and subscriptions
 ;;;     * Cacheing. The knowledge-base and the Knowledge-base-state should be able to build up a cache of resolved subscription functions. Eventually this could allow for reactions in the event queue to occur with reordering of events.
-(defn- sorted-task-labels [knowbase]
+(defn sorted-task-labels [knowbase]
   (let [sorted-tasks @(kb/sub knowbase ?sorted-tasks)]
     (vec
       (for [task-name sorted-tasks]
         {:id task-name
          :label (pr-str task-name)}))))
 
-(defn- nav-choices [knowbase]
-  (let [jobs @(kb/sub knowbase ?jobs)
-        sims (for [[job-id] jobs]
-               {:id job-id
-                :label (or (:onyx.sim.ui/title @(kb/sub knowbase ?job-expr :onyx.sim.ui/expr [:onyx.sim.ui/title] :onyx.sim.ui/job-id job-id)) job-id)})]
+(defn jobs2 [{:as knowbase :keys [sim]}]
+  (keys (:envs sim)))
+
+(defn nav-choices [knowbase]
+  ;; ???: should jobs have a storage id and a tenancy id?
+  (let [];jobs @(kb/sub knowbase ?jobs)
+        ; sims (for [job-id (jobs2 knowbase)];[[job-id] jobs]
+        ;        {:id job-id
+        ;         :label (or (:onyx.sim.ui/title @(kb/sub knowbase ?job-expr :onyx.sim.ui/expr [:onyx.sim.ui/title] :onyx.sim.ui/job-id job-id)) job-id)})]
     (cat-into
      [{:id :onyx.sim.ui/settings
        :label [:i {:class "zmdi zmdi-settings"}]}]
-     sims
+    ;  sims
      [{:id :onyx.sim.ui/jobs
        :label [:i {:class "zmdi zmdi-widgets"}]}
       {:id :onyx.sim.ui/db-view
        :label [:i {:class "zmdi zmdi-assignment"}]}])))
+
+(defn selected-nav [knowbase]
+  (let [{:as ss ::keys [selected-nav]} @(kb/sub knowbase ?settings)]
+    (or selected-nav :onyx.sim.ui/settings)))
+
+(defn the-whole-conn 
+  "Just give me the raw conn"
+  [kb]
+  (get-in kb [:datascript :conn]))

@@ -82,12 +82,12 @@
         :conn conn)))
   (stop [component]
     (assoc component
-      :conn nil))
-  kb/DB
-  (-snap [_ kb]
-    @conn)
-  (-transact! [_ kb kbs dbs txs]
-    (d/transact! conn txs)))
+      :conn nil)))
+  ; kb/DB
+  ; (-snap [_ kb]
+  ;   @conn)
+  ; (-transact! [_ kb kbs dbs txs]
+  ;   (d/transact! conn txs)))
 
 (defn new-datascript 
   ([] (new-datascript {}))

@@ -1,45 +1,35 @@
 (ns onyx.sim.components.ui
-  (:require [com.stuartsierra.component :as component]
-            [taoensso.timbre :as log]
-            [reagent.core :as reagent]
-            [posh.reagent :as posh]
-            [onyx.sim.ui :as ui]
-            [onyx.sim.kb :as kb]
-            [datascript.core :as d]
-            [onyx.sim.components.simulator :as sim]
-            [onyx.sim.examples.hello :as hello]
-            [onyx.sim.examples.flow-short-circuit :as flow]
-            [clojure.core.async :as async :refer [go-loop >! <! alts!]]
-            [onyx.sim.utils :refer [mapply]]
-            [onyx.sim.dat-view :as dat.view]))
-            ; [onyx.sim.core :as sim]))
+  (:require 
+    [com.stuartsierra.component :as component]
+    [taoensso.timbre :as log]
+    [reagent.core :as reagent]
+    [posh.reagent :as posh]
+    [onyx.sim.ui :as view]
+    [onyx.sim.kb :as kb]
+    [onyx.sim.components.dispatcher :refer [dispatch!]]
+    [datascript.core :as d]
+    [onyx.sim.components.sim :as sim]
+    [clojure.core.async :as async :refer [go-loop >! <! alts!]]
+    [onyx.sim.utils :refer [mapply]]
+    [onyx.sim.dat-view :as dat.view]))
 
-; (defn go-event! [{:as sim :keys [knowbase]} event>]
-;   (let [control> (async/chan)]
-;     (go-loop []
-;       (let [[ch event] (alts! (<! event>) control>)]
-;         (if (= ch control>)
-;           (when (not= event ::kill)
-;             (log/warn "unknown control>" event)
-;             (recur))
-;           (do
-;             (kb/transact! sim #(ui/handler % event))
-;             (recur)))))))
+(defn show-ui [ui]
+  [view/selector ui])
 
-(defn show-ui [sim]
-  [ui/selector sim])
+(defn kill-ui []
+  [:div [:p "User Interface has been shut down."]])
 
-(defrecord UIComponent [simulator knowbase]
+(defrecord UI [knowbase dispatcher]
   component/Lifecycle
   (start
     [component]
-    (kb/transact! knowbase (fn [kbs] {:db ui/base-ui}))
-    (sim/submit-job simulator hello/job)
-    (sim/submit-job simulator flow/job)
-    (reagent/render [show-ui simulator] (js/document.getElementById "app"))
+    (dispatch! (:dispatcher component) :onyx.sim.event/init-ui :base-ui view/base-ui)
+    (dispatch! (:dispatcher component) :onyx.sim.event/init-examples)
+    (reagent/render [show-ui component] (js/document.getElementById "app"))
     component)
   (stop [component]
+    (reagent/render [kill-ui] (js/document.getElementById "app"))
     component))
 
-(defn new-ui-component []
-  (map->UIComponent {}))
+(defn new-ui []
+  (map->UI {}))

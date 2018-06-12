@@ -2,6 +2,7 @@
   (:require [taoensso.timbre :as log]
             [clojure.pprint :refer [pprint]]
             #?(:clj [clojure.edn :as reader])
+            [datascript.core :as d]
 ;;             #?(:clj [clojure.core.async :refer [<! chan go]]
 ;;                :cljs [clojure.core.async :refer [<! chan]])
             #?(:clj [clojure.java.io :as io]))
@@ -12,6 +13,9 @@
 ;;;
 ;;; !!!: This is an experimental volatile file. Do not expect it to stay the same.
 ;;;
+
+(defn gen-uuid []
+  (d/squuid))
 
 #?(:clj
    (defn edn-seq

@@ -35,9 +35,10 @@
       :db/cardinality :db.cardinality/many}
     {:db/ident :onyx/job-id
       :db/unique :db.unique/identity}
-    ;; TODO: move to dat.view
+    {:db/ident :onyx.sim.api/job-id
+      :db/unique :db.unique/identity}
     {:db/ident :onyx.core/job
-      :db/valueType :db.type/ref}
+     :db/valueType :db.type/ref}
     {:db/ident ::env
       :db/valueType :db.type/ref}])
 
@@ -51,6 +52,18 @@
 ;;
 ;; Init
 ;;
+(defn- simplify-job [sim-job]
+  (-> sim-job
+      (clojure.set/rename-keys {:onyx.core/catalog         :catalog
+                                :onyx.core/workflow        :workflow
+                                :onyx.core/lifecycles      :lifecycles
+                                :onyx.core/windows         :windows
+                                :onyx.core/triggers        :triggers
+                                :onyx.core/task-scheduler  :task-scheduler
+                                :onyc.core/metadata        :metadata
+                                :onyx.core/flow-conditions :flow-conditions})
+      (select-keys [:catalog :workflow :lifecycles :windows :triggers :task-scheduler :metadata :flow-conditions])))
+
 (defn- plugin? [task-state]
   (get-in task-state [:event :onyx.core/task-map :onyx/plugin]))
 
@@ -114,6 +127,7 @@
 (defn init [job]
   ; (log/debug "initting")
   (let [env (-> job
+              (simplify-job)
               (onyx/init)
               (init-plugins))]
     ; (log/debug "initted?" (get-in env [:tasks :in :pipeline]))

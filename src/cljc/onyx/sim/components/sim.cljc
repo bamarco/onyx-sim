@@ -4,25 +4,9 @@
     [taoensso.timbre :as log]
     [onyx.sim.api :as api]
     [datascript.core :as d]
+    [onyx.sim.utils :refer [gen-uuid]]
     [clojure.core.async :as async :refer [go go-loop <! >!]]
     #?(:cljs [reagent.core :refer [atom]])))
-
-;;; ???: move to utils
-(defn gen-uuid []
-  (d/squuid))
-
-;; ???:Move to api init
-(defn- simplify [sim-job]
-  (-> sim-job
-      (clojure.set/rename-keys {:onyx.core/catalog         :catalog
-                                :onyx.core/workflow        :workflow
-                                :onyx.core/lifecycles      :lifecycles
-                                :onyx.core/windows         :windows
-                                :onyx.core/triggers        :triggers
-                                :onyx.core/task-scheduler  :task-scheduler
-                                :onyc.core/metadata        :metadata
-                                :onyx.core/flow-conditions :flow-conditions})
-      (select-keys [:catalog :workflow :lifecycles :windows :triggers :task-scheduler :metadata :flow-conditions])))
 
 (defn go-envs! [envs tss> & {:as opts :keys [control>]}]
   ; (log/info "go-envs!")
