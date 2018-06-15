@@ -1,6 +1,6 @@
 (ns onyx.sim.subscriptions
   (:require
-    [onyx.sim.kb :as kb]
+    [onyx.sim.kb :refer [sub q]]
     [onyx.sim.utils :refer [cat-into]]))
 
 (def ?settings
@@ -15,10 +15,16 @@
     :onyx.sim.kb/in {$ :datascript}
     :onyx.sim.kb.datascript/where [[_ :onyx/job-id ?job-id]]})
 
+(def ?job-catalog
+  '{:onyx.sim.kb/type :onyx.sim.kb.datascript/q
+    :onyx.sim.kb/in {$ :datascript}
+    :onyx.sim.kb.datascript/find [?job-id]
+    :onyx.sim.kb.datascript/where [[_ :onyx.sim.api/job-id ?job-id]]})
+
 (def ?job-expr
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
     :onyx.sim.kb.datascript/pull-expr ?expr
-    :onyx.sim.kb.datascript/eid [:onyx/job-id ?job-id]
+    :onyx.sim.kb.datascript/eid [:onyx.sim.api/job-id ?job-id]
     :onyx.sim.kb/in {$ :datascript
                      ?job-id :onyx.sim.ui/job-id
                      ?expr :onyx.sim.ui/expr}})
@@ -55,6 +61,12 @@
                      ?job-id :onyx.sim.ui/job-id}
     :onyx.sim.kb.ratom/path [:envs ?job-id]})
 
+(def ?persona
+  '{:onyx.sim.kb/type :onyx.sim.kb/pull
+    :onyx.sim.kb/in {$ :datascript}
+    :onyx.sim.kb.pull/expr [:onyx.sim.ui/active-persona]
+    :onyx.sim.kb.pull/eid [:onyx.sim.ui/name :onyx.sim.ui/admin-user]})
+
 ;;;
 ;;; Subsription Functions
 ;;;
@@ -62,8 +74,8 @@
 ;;;     * More data driven. These fns should eventually look as much like the queries above as possible
 ;;;     * Flexible. These fns should work with both queries and subscriptions
 ;;;     * Cacheing. The knowledge-base and the Knowledge-base-state should be able to build up a cache of resolved subscription functions. Eventually this could allow for reactions in the event queue to occur with reordering of events.
-(defn sorted-task-labels [knowbase]
-  (let [sorted-tasks @(kb/sub knowbase ?sorted-tasks)]
+(defn sorted-task-labels [kb]
+  (let [sorted-tasks @(sub kb ?sorted-tasks)]
     (vec
       (for [task-name sorted-tasks]
         {:id task-name
@@ -72,26 +84,52 @@
 (defn jobs2 [{:as knowbase :keys [sim]}]
   (keys (:envs sim)))
 
-(defn nav-choices [knowbase]
-  ;; ???: should jobs have a storage id and a tenancy id?
+(defn job-title [kb job-id]
+  (let [{:onyx.sim.ui/keys [title]} (sub kb ?job-expr 
+                                      :onyx.sim.ui/expr [:onyx.sim.ui/title]
+                                      :onyx.sim.api/job-id job-id)]
+    (or title (str job-id))))
+
+(defn nav-choices 
+  ""
+  [kb]
   (let [];jobs @(kb/sub knowbase ?jobs)
-        ; sims (for [job-id (jobs2 knowbase)];[[job-id] jobs]
-        ;        {:id job-id
-        ;         :label (or (:onyx.sim.ui/title @(kb/sub knowbase ?job-expr :onyx.sim.ui/expr [:onyx.sim.ui/title] :onyx.sim.ui/job-id job-id)) job-id)})]
+        ; sims (for [job-id (jobs2 kb)];[[job-id] jobs]
+        ;         {:id job-id
+        ;          :label (job-title kb job-id)})]
     (cat-into
      [{:id :onyx.sim.ui/settings
        :label [:i {:class "zmdi zmdi-settings"}]}]
     ;  sims
-     [{:id :onyx.sim.ui/jobs
+     [{:id :onyx.sim.ui/job-catalog
        :label [:i {:class "zmdi zmdi-widgets"}]}
-      {:id :onyx.sim.ui/db-view
+      {:id :onyx.sim.ui/db-frisk
        :label [:i {:class "zmdi zmdi-assignment"}]}])))
 
-(defn selected-nav [knowbase]
-  (let [{:as ss ::keys [selected-nav]} @(kb/sub knowbase ?settings)]
+(defn selected-nav 
+  "The value for the main navigation selection"
+  [kb]
+  (let [{:onyx.sim.ui/keys [selected-nav]} @(sub kb ?settings)]
     (or selected-nav :onyx.sim.ui/settings)))
 
 (defn the-whole-conn 
   "Just give me the raw conn"
   [kb]
   (get-in kb [:datascript :conn]))
+
+(def default-persona
+  '{:pux.core/roles #{:onyx.sim.role/admin :onyx.sim.role/laptop-user}})
+
+(def tablet-persona
+  '{:pux.core/roles #{:onyx.sim.role/admin :onyx.sim.role/tablet-user}})
+
+(defn active-persona
+  "The currently active persona"
+  [kb]
+  default-persona)  
+
+(defn personas
+  "All personas available to the active user"
+  [kb]
+  [default-persona tablet-persona])
+  

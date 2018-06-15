@@ -13,8 +13,8 @@
     [onyx.sim.utils :refer [mapply]]
     [onyx.sim.dat-view :as dat.view]))
 
-(defn show-ui [ui]
-  [view/selector ui])
+(defn show-ui [model]
+  [view/pux-selector model])
 
 (defn kill-ui []
   [:div [:p "User Interface has been shut down."]])

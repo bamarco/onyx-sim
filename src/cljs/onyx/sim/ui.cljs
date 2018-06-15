@@ -2,16 +2,18 @@
   (:require
     [re-com.core :as re-com]
     [taoensso.timbre :as log]
+    [clojure.spec.alpha :as s]
     [posh.reagent :as posh]
     [onyx.sim.api :as api]
     [onyx.sim.kb :as kb]
     [onyx.sim.components.dispatcher :as dispatcher]
     [onyx.sim.subscriptions :as sub]
     [datascript.core :as d]
+    [onyx.sim.pux :as pux]
     [onyx.sim.kb :as kb]
     [reagent.ratom :as ratom]
     [clojure.core.async :as async :refer [go go-loop >! <! alts!]]
-    [onyx.sim.utils :as utils :refer [third deref-or-value ppr-str mapply]]))
+    [onyx.sim.utils :as utils :refer [gen-uuid third deref-or-value ppr-str mapply]]))
 
 (def schema-idents
   [{:db/ident ::name
@@ -47,7 +49,7 @@
    :output onyx-green})
 
 (defn subscribe [model q-expr-or-fn & inputs]
-  (log/info "subscribing" q-expr-or-fn)
+  ; (log/info "subscribing" q-expr-or-fn)
   (if (fn? q-expr-or-fn)
     (ratom/make-reaction #(apply q-expr-or-fn (:knowbase model) inputs))
     (apply kb/sub (:knowbase model) q-expr-or-fn inputs)))
@@ -324,7 +326,24 @@
           ::raw-env    [raw-env model job-id]
           [warn "Unknown environment style" env-style])]]))
 
-(defn manage-job [model job-id]
+(def to-uuid cljs.reader/read-string)
+
+(defn submit-job-button [model job-catalog-id]
+  (let [{:onyx/keys [job-id]} (listen model sub/?job-expr ::expr [:onyx/job-id] ::job-id job-catalog-id)]
+    [re-com/h-box
+      :children
+      [
+        [re-com/button
+          :label "Submit"
+          :on-click #(dispatch! model :onyx.sim.event/submit-job ::job-id job-catalog-id)]
+        [re-com/input-text
+          :model (str job-id)
+          :on-change #(dispatch! model :onyx.sim.event/eav :e [:onyx.sim.api/job-id job-catalog-id] :a :onyx/job-id :v (or (to-uuid %) (gen-uuid)))
+          :placeholder
+          "Random Job ID"]]]))
+
+
+(defn manage-job [model job-id] none
   (let [{:keys [onyx/doc ::title :onyx.core/workflow]}
         (listen model sub/?job-expr ::expr [:onyx.core/workflow :onyx/doc ::title] ::job-id job-id)]
     [re-com/v-box
@@ -332,20 +351,21 @@
       [
         [field-label "Title"]
         [re-com/label :label (str title)]
-        [field-label "Job-id"]
+        [field-label "Catalog id"]
         [re-com/label :label (str job-id)]
         [field-label "Description"]
         [re-com/p (str doc)]
         [field-label "Workflow"]
-        [code :code workflow]]]))
+        [code :code workflow]
+        [submit-job-button model job-id]]]))
 
-(defn manage-jobs [model]
-  (let [jobs (listen model sub/?jobs)]
+(defn job-catalog [model]
+  (let [jobs (listen model sub/?job-catalog)]
     [re-com/v-box
       :children
       (into
         [[re-com/title
-          :label "Job Manager"
+          :label "Job Catalog"
           :level :level1]]
         (comp
           (map
@@ -369,9 +389,9 @@
         [re-com/v-box :children (into [[field-label "Attr"]] (map codit as))]
         [re-com/v-box :children (into [[field-label "Value"]] (map codit vs))]]]))
 
-(defn- db-view [model]
-  (log/info "db-view")
-  (let [{:as db :keys [schema]} @(listen model sub/the-whole-conn)]
+(defn- db-frisk [model]
+  (let [conn (listen model sub/the-whole-conn)
+        {:as db :keys [schema]} @conn]
     [re-com/v-box
       :children
       [
@@ -392,14 +412,14 @@
   [settings model])
 
 (defmethod display-selected
-  ::db-view
+  ::db-frisk
   [model _]
-  [db-view model])
+  [db-frisk model])
 
 (defmethod display-selected
-  ::jobs
+  ::job-catalog
   [model _]
-  [manage-jobs model])
+  [job-catalog model])
 
 (defmethod display-selected
   :default
@@ -423,8 +443,8 @@
 
 (defn selector [model]
   [re-com/v-box
-   :children
-   [
+    :children
+    [
       [re-com/gap :size ".25rem"]
       [re-com/h-box
         :style {:margin-left "auto"
@@ -435,5 +455,54 @@
         [
           [logo model]
           [nav-bar model]]]
-    [re-com/gap :size ".25rem"]
-    [selected model]]])
+      [re-com/gap :size ".25rem"]
+      [selected model]]])
+
+;;;
+;;; Personas
+;;;
+(defn persona-bar [model]
+  (let [choices (listen model sub/personas)]
+    [code :code {"Choices" choices}]))
+
+(defn persona-dropdown [model]
+  [:div "TODO: persona-dropdown"])
+
+(defn nav-dropdown [model]
+  [:div "TODO: nav-dropdown"])
+
+(defn pux-laptop-selector [model]
+  [re-com/v-box
+    :children
+    [
+      [re-com/h-box
+        :children
+        [
+          [logo model]
+          [nav-bar model]]]
+      [re-com/h-box
+        :children
+        [
+          [persona-bar model]
+          [selected model]]]]])
+
+(defn pux-tablet-selector [model]
+  [re-com/v-box
+    :children
+    [
+      [logo model]
+      [persona-dropdown model]
+      [nav-dropdown model]
+      [selected model]]])
+
+(defn pux-selector [model]
+  (let [persona (listen model sub/active-persona)]
+    (cond
+      (pux/guard {:pux.core/required [:onyx.sim.role/admin :onyx.sim.role/laptop-user]} persona)
+      [pux-laptop-selector model]
+
+      (pux/guard {:pux.core/required [:onyx.sim.role/admin :onyx.sim.role/tablet-user]} persona)
+      [pux-tablet-selector model]
+      
+      :else
+      [pux-tablet-selector model])))
