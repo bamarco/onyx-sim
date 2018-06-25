@@ -14,7 +14,7 @@
     [onyx.sim.dat-view :as dat.view]))
 
 (defn show-ui [model]
-  [view/pux-selector model])
+  [view/selector model])
 
 (defn kill-ui []
   [:div [:p "User Interface has been shut down."]])

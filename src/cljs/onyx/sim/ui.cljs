@@ -9,11 +9,10 @@
     [onyx.sim.components.dispatcher :as dispatcher]
     [onyx.sim.subscriptions :as sub]
     [datascript.core :as d]
-    [onyx.sim.pux :as pux]
     [onyx.sim.kb :as kb]
     [reagent.ratom :as ratom]
     [clojure.core.async :as async :refer [go go-loop >! <! alts!]]
-    [onyx.sim.utils :as utils :refer [gen-uuid third deref-or-value ppr-str mapply]]))
+    [onyx.sim.utils :as utils :refer [forv gen-uuid third deref-or-value ppr-str mapply]]))
 
 (def schema-idents
   [{:db/ident ::name
@@ -457,52 +456,3 @@
           [nav-bar model]]]
       [re-com/gap :size ".25rem"]
       [selected model]]])
-
-;;;
-;;; Personas
-;;;
-(defn persona-bar [model]
-  (let [choices (listen model sub/personas)]
-    [code :code {"Choices" choices}]))
-
-(defn persona-dropdown [model]
-  [:div "TODO: persona-dropdown"])
-
-(defn nav-dropdown [model]
-  [:div "TODO: nav-dropdown"])
-
-(defn pux-laptop-selector [model]
-  [re-com/v-box
-    :children
-    [
-      [re-com/h-box
-        :children
-        [
-          [logo model]
-          [nav-bar model]]]
-      [re-com/h-box
-        :children
-        [
-          [persona-bar model]
-          [selected model]]]]])
-
-(defn pux-tablet-selector [model]
-  [re-com/v-box
-    :children
-    [
-      [logo model]
-      [persona-dropdown model]
-      [nav-dropdown model]
-      [selected model]]])
-
-(defn pux-selector [model]
-  (let [persona (listen model sub/active-persona)]
-    (cond
-      (pux/guard {:pux.core/required [:onyx.sim.role/admin :onyx.sim.role/laptop-user]} persona)
-      [pux-laptop-selector model]
-
-      (pux/guard {:pux.core/required [:onyx.sim.role/admin :onyx.sim.role/tablet-user]} persona)
-      [pux-tablet-selector model]
-      
-      :else
-      [pux-tablet-selector model])))

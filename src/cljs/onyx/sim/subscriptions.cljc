@@ -61,12 +61,6 @@
                      ?job-id :onyx.sim.ui/job-id}
     :onyx.sim.kb.ratom/path [:envs ?job-id]})
 
-(def ?persona
-  '{:onyx.sim.kb/type :onyx.sim.kb/pull
-    :onyx.sim.kb/in {$ :datascript}
-    :onyx.sim.kb.pull/expr [:onyx.sim.ui/active-persona]
-    :onyx.sim.kb.pull/eid [:onyx.sim.ui/name :onyx.sim.ui/admin-user]})
-
 ;;;
 ;;; Subsription Functions
 ;;;
@@ -116,20 +110,3 @@
   "Just give me the raw conn"
   [kb]
   (get-in kb [:datascript :conn]))
-
-(def default-persona
-  '{:pux.core/roles #{:onyx.sim.role/admin :onyx.sim.role/laptop-user}})
-
-(def tablet-persona
-  '{:pux.core/roles #{:onyx.sim.role/admin :onyx.sim.role/tablet-user}})
-
-(defn active-persona
-  "The currently active persona"
-  [kb]
-  default-persona)  
-
-(defn personas
-  "All personas available to the active user"
-  [kb]
-  [default-persona tablet-persona])
-  

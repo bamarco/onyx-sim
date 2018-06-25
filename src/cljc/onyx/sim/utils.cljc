@@ -141,6 +141,15 @@
     (apply merge-with deep-merge maps)
     (last maps)))
 
-(defn third [coll]
+(defn third 
+  "Is third is used often enough to have it's own name? Should the need to use third be a warning to name things?"
+  [coll]
   (nth coll 2))
+
+#?
+(:clj
+  (defmacro forv
+    "for loop as a vector. Equivalent to mapv"
+    [bind & body]
+    `(for ~bind ~@body)))
 
