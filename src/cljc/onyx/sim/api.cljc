@@ -125,7 +125,7 @@
     (p/recover! (:pipeline task) nil nil)))
 
 (defn init [job]
-  ; (log/debug "initting")
+  (log/info "initting" job)
   (let [env (-> job
               (simplify-job)
               (onyx/init)
@@ -374,14 +374,11 @@
 
 (defmulti transition-env
   (fn [env action-data]
-    ; (log/info "transition-env event:" 
-    ;   (if (keyword? action-data)
-    ;     action-data
-    ;     (or (::event action-data) (:event action-data) :default)))
-    (if (keyword? action-data)
-       action-data
-      (or (::event action-data)
-          (:event action-data)))))
+    (let [tss-key (if (keyword? action-data)
+                    action-data
+                    (or (::event action-data) (:event action-data)))]
+      (log/info "transition-env event:" (or tss-key :default))
+      tss-key)))
 
 #?
 (:clj

@@ -1,4 +1,4 @@
-(ns onyx.sim.ui
+(ns onyx.sim.console.ui
   (:require
     [re-com.core :as re-com]
     [taoensso.timbre :as log]
@@ -7,7 +7,7 @@
     [onyx.sim.api :as api]
     [onyx.sim.kb :as kb]
     [onyx.sim.components.dispatcher :as dispatcher]
-    [onyx.sim.subscriptions :as sub]
+    [onyx.sim.console.subscription :as sub]
     [datascript.core :as d]
     [onyx.sim.kb :as kb]
     [reagent.ratom :as ratom]
@@ -127,17 +127,17 @@
           :label "Pretty"
           :model env-style
           :value ::pretty-env
-          :on-change #(dispatch! model :onyx.sim.event/eav :e [::name ::settings] :a ::env-style :v ::pretty-env)]
+          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [::name ::settings] :a ::env-style :v ::pretty-env)]
         [re-com/checkbox
           :label "(Render Segments)"
           :model render-segments?
           :disabled? raw?
-          :on-change #(dispatch! model :onyx.sim.event/eav :e [::name ::settings] :a ::render-segments? :v (not render-segments?))]
+          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [::name ::settings] :a ::render-segments? :v (not render-segments?))]
         [re-com/radio-button
           :label "Raw"
           :model env-style
           :value ::raw-env
-          :on-change #(dispatch! model :onyx.sim.event/eav :e [::name ::settings] :a ::env-style :v ::raw-env)]
+          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [::name ::settings] :a ::env-style :v ::raw-env)]
         [re-com/checkbox
           :label "(Only Summary)"
           :model only-summary?
@@ -155,19 +155,19 @@
         [re-com/checkbox 
           :model task-hider?
           :label "Show Task Hider"
-          :on-change #(dispatch! model :onyx.sim.event/eav :e [::name ::setttings] :a ::task-hider? :v (not task-hider?))]
+          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [::name ::setttings] :a ::task-hider? :v (not task-hider?))]
         [re-com/checkbox
           :model description?
           :label "Show Job Description"
-          :on-change #(dispatch! model :onyx.sim.event/eav :e [::name ::settings] :a ::description? :v (not description?))]
+          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [::name ::settings] :a ::description? :v (not description?))]
         [re-com/checkbox 
           :model next-action?
           :label "Show Next Action"
-          :on-change #(dispatch! model :onyx.sim.event/eav :e [::name ::settings] :a ::next-action? :v (not next-action?))]
+          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [::name ::settings] :a ::next-action? :v (not next-action?))]
         [env-style model]]]))
 
 (defn- hidden-tasks [model job-id]
-  (let [choices (or (listen model sub/sorted-task-labels) [])
+  (let [choices (or (listen model sub/sorted-task-labels job-id) [])
         {::keys [hidden-tasks]} (listen model sub/?hidden-tasks)
         hidden-tasks (or hidden-tasks #{})]
     [re-com/v-box
@@ -177,13 +177,13 @@
         [re-com/selection-list
           :choices choices
           :model hidden-tasks
-          :on-change #(dispatch! model :onyx.sim.event/eav :e [:onyx/job-id job-id] :a ::hidden-tasks :v %)]]]))
+          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [:onyx/job-id job-id] :a ::hidden-tasks :v %)]]]))
 
 (defn- default-render [segs]
   [code :code segs])
 
 (defn- pretty-outbox [model job-id task-name & {:keys [render]}]
-  (let [{:as env :keys [tasks]} (listen model sub/?env ::job-id job-id)
+  (let [tasks (listen model sub/env-in [job-id :tasks])
         outputs (get-in tasks [task-name :outputs])]
     ;; ???: dump segments button
     (if-not outputs none
@@ -196,10 +196,8 @@
         [render outputs]]])))
 
 (defn- pretty-inbox [model job-id task-name & {:keys [render]}]
-  (let [{:keys [tasks]} (listen model sub/?env ::job-id job-id)
-        {::keys [import-uris]} (listen model sub/?import-uris)
-        inbox (get-in tasks [task-name :inbox])
-        import-uri (first import-uris)]
+  (let [tasks (listen model sub/env-in [job-id :tasks])
+        inbox (get-in tasks [task-name :inbox])]
     [re-com/v-box
      :class "onyx-inbox"
      :children
@@ -209,7 +207,7 @@
       [render inbox]]]))
 
 (defn- pretty-task-box [model job-id task-name]
-  (let [env (listen model sub/?env ::job-id job-id)
+  (let [env (listen model sub/env-in [job-id])
         {::keys [render]} (listen model sub/?job-expr ::expr [::render])
         task-type (get-in env [:tasks task-name :event :onyx.core/task-map :onyx/type])
         task-doc (get-in env [:tasks task-name :event :onyx.core/task-map :onyx/doc])
@@ -236,14 +234,14 @@
               :level :level2]
             [re-com/button
               :label "Hide"
-              :on-click #(dispatch! model :onyx.sim.event/hide-task :selected-job job-id :task-name task-name)]]]
+              :on-click #(dispatch! model :onyx.sim.console.event/hide-task :selected-job job-id :task-name task-name)]]]
         (when task-doc
           [re-com/label :style {:color :white} :label task-doc])
         [pretty-inbox model job-id task-name :render render-fn]
         [pretty-outbox model job-id task-name :render render-fn]]]))
 
 (defn- pretty-env [model job-id]
-  (let [{:as env :keys [sorted-tasks]} (listen model sub/?env ::job-id job-id)
+  (let [sorted-tasks (listen model sub/env-in [job-id :sorted-tasks])
         {::keys [hidden-tasks]} (listen model sub/?hidden-tasks)]
     [re-com/v-box
      :class "onyx-env"
@@ -256,7 +254,7 @@
 
 (defn- summary [model job-id & {:keys [summary-fn]}]
   (let [summary-fn (or summary-fn api/env-summary)
-        env (listen model sub/?env ::job-id job-id)]
+        env (listen model sub/env-in [job-id])]
     [code :class "onyx-panel" :code (summary-fn env)]))
 
 (defn- raw-env [model job-id]
@@ -270,7 +268,7 @@
       [summary model job-id :summary-fn (when-not only-summary? identity)]]]))
 
 (defn- next-action [model job-id]
-  (let [{:as env :keys [next-action]} (listen model sub/?env ::job-id job-id)]
+  (let [next-action (listen model sub/env-in [job-id])]
     [re-com/h-box
       :gap "1ch"
       :children
@@ -334,10 +332,10 @@
       [
         [re-com/button
           :label "Submit"
-          :on-click #(dispatch! model :onyx.sim.event/submit-job ::job-id job-catalog-id)]
+          :on-click #(dispatch! model :onyx.sim.console.event/submit-job ::job-id job-catalog-id)]
         [re-com/input-text
           :model (str job-id)
-          :on-change #(dispatch! model :onyx.sim.event/eav :e [:onyx.sim.api/job-id job-catalog-id] :a :onyx/job-id :v (or (to-uuid %) (gen-uuid)))
+          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [:onyx.sim.api/job-id job-catalog-id] :a :onyx/job-id :v (or (to-uuid %) (gen-uuid)))
           :placeholder
           "Random Job ID"]]]))
 
@@ -401,29 +399,39 @@
         [code :code schema]
         [eav-view db]]]))
 
+(defn running-jobs [model]
+  (let [jobs (listen model sub/running-jobs)]
+    [re-com/h-box
+      :children
+      (forv [job jobs]
+        [code :code job])]))
+    ;[job-view model job-id]
+
 (defmulti display-selected 
   (fn [_ selection] 
     selection))
 
-(defmethod display-selected
-  ::settings
+(defmethod display-selected ::settings
   [model _]
   [settings model])
 
-(defmethod display-selected
-  ::db-frisk
+(defmethod display-selected ::db-frisk
   [model _]
   [db-frisk model])
 
-(defmethod display-selected
-  ::job-catalog
+(defmethod display-selected ::job-catalog
   [model _]
   [job-catalog model])
 
-(defmethod display-selected
-  :default
-  [model job-id]
-  [job-view model job-id])
+(defmethod display-selected ::running-jobs
+  [model _]
+  [running-jobs model])
+
+(defmethod display-selected :default
+  [model ui-key]
+  [re-com/p
+    (str "TODO: " ui-key)])
+  
 
 (defn selected [model]
   (let [{::keys [selected-nav]} (listen model sub/?settings)]
@@ -433,12 +441,12 @@
      [display-selected model selected-nav]]))
 
 (defn nav-bar [model]
-  (let [choices (listen model sub/nav-choices)
+  (let [choices (listen model sub/nav-tab-icons)
         selected-nav (listen model sub/selected-nav)]
     [re-com/horizontal-bar-tabs
       :tabs choices
       :model selected-nav
-      :on-change #(dispatch! model :onyx.sim.event/eav :e [::name ::settings] :a ::selected-nav :v %)]))
+      :on-change #(dispatch! model :onyx.sim.console.event/eav :e [::name ::settings] :a ::selected-nav :v %)]))
 
 (defn selector [model]
   [re-com/v-box

@@ -2,7 +2,7 @@
   (:require
     [com.stuartsierra.component :as component]
     [clojure.core.async :as async :refer [go go-loop <! >!]]
-    [onyx.sim.event3 :as event]
+    [onyx.sim.console.event :as event]
     [taoensso.timbre :as log]))
 
 (defn dispatch! [{:keys [event>]} intent & {:as event}]

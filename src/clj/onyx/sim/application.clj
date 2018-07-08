@@ -14,8 +14,8 @@
   ;; Deprecated way still works:
 ;;   (http-kit/new-web-server http-port)
   ;; New way doesn't work yet:
-  (jetty/new-jetty :port http-port)
-  )
+  (jetty/new-jetty :port http-port))
+  
 
 (defn app-system [config]
   (component/system-map

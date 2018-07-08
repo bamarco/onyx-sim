@@ -5,8 +5,8 @@
             [taoensso.timbre :as log]
             [taoensso.timbre.appenders.core :as appenders]
 ;;             [ring.middleware.logger :refer [wrap-with-logger]]
-            [ring.logger.timbre :refer [wrap-with-logger]]
-            ))
+            [ring.logger.timbre :refer [wrap-with-logger]]))
+            
 
 (defn config []
   ;; ???: use environ for log file.

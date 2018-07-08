@@ -1,6 +1,5 @@
 (ns cljs.user
-  (:require [onyx.sim.core]
-            [onyx.sim.system :as system]))
+  (:require [onyx.sim.system :as system]))
 
 (def go system/go)
 (def reset system/reset)

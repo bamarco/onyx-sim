@@ -1,8 +1,11 @@
-(ns onyx.sim.event3
+(ns onyx.sim.console.event
   (:require
+    [taoensso.timbre :as log]
     [onyx.sim.components.sim :as sim]
     [datascript.core :as d]
+    [onyx.sim.kb :refer [q snap]]
     [onyx.sim.utils :refer [gen-uuid]]
+    [onyx.sim.console.subscription :as sub]
     [onyx.sim.examples.hello :as example.hello]
     [onyx.sim.examples.flow-short-circuit :as example.flow]))
 
@@ -47,10 +50,10 @@
 (defn hide-task 
   "Hide the given task from the ui env display"
   [db selected-job task-name]
-  (let [{:onyx.sim.ui/keys [hidden-tasks]} (d/pull db [:onyx.sim.ui/hidden-tasks] [:onyx/job-id selected-job])]
+  (let [{:onyx.sim.console.ui/keys [hidden-tasks]} (d/pull db [:onyx.sim.console.ui/hidden-tasks] [:onyx/job-id selected-job])]
     [[:db/add 
       [:onyx/job-id selected-job] 
-      :onyx.sim.ui/hidden-tasks
+      :onyx.sim.console.ui/hidden-tasks
       (disj hidden-tasks task-name)]]))
 
 ;;;
@@ -61,46 +64,53 @@
   (fn [knowbase event]
     (:onyx.sim.event/intent event)))
 
-(defmethod handle! :onyx.sim.event/init-examples
+(defmethod handle! ::init-examples
   [kb _]
   (let [jobs [example.hello/job example.flow/job]]
     (submit-jobs! kb jobs)
     (record-jobs! kb jobs)))
 
-(defmethod handle! :onyx.sim.event/init-ui
+(defmethod handle! ::init-ui
   [kb {:keys [base-ui]}]
   (tx! kb base-ui))
 
-(defmethod handle! :onyx.sim.event/tick
+(defmethod handle! ::tick
   [kb {:as event :keys [selected-job]}]
   (tss! kb
     [{:onyx/job-id selected-job
       :onyx.sim.api/event :onyx.sim.api/go-tick}]))
 
-(defmethod handle! :onyx.sim.event/step
+(defmethod handle! ::step
   [kb {:as event :keys [selected-job]}]
   (tss! kb
     [{:onyx/job-id selected-job
       :onyx.sim.api/event :onyx.sim.api/go-step}]))
 
-(defmethod handle! :onyx.sim.event/drain
+(defmethod handle! ::drain
   [kb {:as event :keys [selected-job]}]
   (tss! kb
     [{:onyx/job-id selected-job
       :onyx.sim.api/event :onyx.sim.api/go-drain}]))
 
-(defmethod handle! :onyx.sim.event/play
+(defmethod handle! ::play
   [kb {:as event :keys [selected-job]}]
   (tss! kb
     [{:onyx/job-id selected-job
       :onyx.sim.api/event :onyx.sim.api/go-step-drain}]))
 
-(defmethod handle! :onyx.sim.event/hide-task
+(defmethod handle! ::hide-task
   [kb {:as event :keys [selected-job task-name]}]
   (tx! kb
     [[:db.fn/call hide-task selected-job task-name]]))
 
-(defmethod handle! :onyx.sim.event/eav
+(defmethod handle! ::submit-job
+  [kb {:as event :onyx.sim.console.ui/keys [job-id]}]
+  (let [snapshot (snap kb)
+        _ (log/info "snapshot" snapshot)
+        job (q snapshot sub/?job-entry :onyx.sim.api/job-id job-id)]
+    (submit-jobs! kb [job])))
+
+(defmethod handle! ::eav
   [kb {:as event :keys [e a v]}]
   (tx! kb
     [[:db/add e a v]]))

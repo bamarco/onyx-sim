@@ -16,10 +16,10 @@
          io/input-stream
          response
          (assoc :headers {"Content-Type" "text/html; charset=utf-8"})))
-    (GET "/favicon.ico" _
-     (-> "public/ns/onyx/onyx-logo.ico"
-         io/resource
-         io/input-stream
-         response
-         (assoc :headers {"Content-Type" "text/html; charset=utf-8"})))
+   (GET "/favicon.ico" _
+    (-> "public/ns/onyx/onyx-logo.ico"
+        io/resource
+        io/input-stream
+        response
+        (assoc :headers {"Content-Type" "text/html; charset=utf-8"})))
    (resources "/")))

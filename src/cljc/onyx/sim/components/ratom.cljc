@@ -64,13 +64,13 @@
       :ratom nil))
   kb/DB
   (-snap [_ kb]
-    @ratom)
-  (-transact! [_ kb kbs dbs txs]
-    (reset! ratom
-      (reduce
-        conj-tx
-        dbs
-        txs))))
+    @ratom))
+  ; (-transact! [_ kb kbs dbs txs]
+  ;   (reset! ratom
+  ;     (reduce
+  ;       conj-tx
+  ;       dbs
+  ;       txs))))
 
 (defn new-ratom
   ([] (new-ratom {}))

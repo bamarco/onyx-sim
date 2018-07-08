@@ -7,7 +7,7 @@
     #?(:cljs [posh.reagent :as posh])
     #?(:cljs [reagent.ratom :refer [make-reaction]])
     [onyx.sim.api :as api]
-    #?(:cljs [onyx.sim.ui :as ui])
+    #?(:cljs [onyx.sim.console.ui :as ui])
     [datascript.core :as d]))
 
 (defn- q-expr->ds-q-expr [{:as q-expr :onyx.sim.kb.datascript/keys [find where] :onyx.sim.kb/keys [in]}]
@@ -82,10 +82,10 @@
         :conn conn)))
   (stop [component]
     (assoc component
-      :conn nil)))
-  ; kb/DB
-  ; (-snap [_ kb]
-  ;   @conn)
+      :conn nil))
+  kb/DB
+  (-snap [_ kb]
+    @conn))
   ; (-transact! [_ kb kbs dbs txs]
   ;   (d/transact! conn txs)))
 
