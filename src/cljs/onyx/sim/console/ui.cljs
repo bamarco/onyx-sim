@@ -216,6 +216,7 @@
         render-fn (if render-segments?
                     (or local-render render default-render)
                     default-render)]
+    (log/info "ptb" task-name)
     [re-com/v-box
       :class "onyx-task onyx-panel"
       :gap ".25rem"
@@ -242,15 +243,14 @@
 
 (defn- pretty-env [model job-id]
   (let [sorted-tasks (listen model sub/env-in [job-id :sorted-tasks])
-        {::keys [hidden-tasks]} (listen model sub/?hidden-tasks)]
+        hidden-tasks nil];(listen model hidden-tasks job-id)]
+    (log/info "sorted-tasks" job-id sorted-tasks)
     [re-com/v-box
      :class "onyx-env"
      :children
-     (into
-      []
-      (for [task-name (remove (or hidden-tasks #{}) sorted-tasks)]
+     (forv [task-name (remove (or hidden-tasks #{}) sorted-tasks)]
         ^{:key task-name}
-        [pretty-task-box model task-name]))]))
+        [pretty-task-box model job-id task-name])]))
 
 (defn- summary [model job-id & {:keys [summary-fn]}]
   (let [summary-fn (or summary-fn api/env-summary)

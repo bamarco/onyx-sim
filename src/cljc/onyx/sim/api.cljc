@@ -65,7 +65,7 @@
       (select-keys [:catalog :workflow :lifecycles :windows :triggers :task-scheduler :metadata :flow-conditions])))
 
 (defn- fingerprint-env [env job]
-  (log/info "env fingerprint" [(::catalog-id job) (:onyx/job-id job)])
+  ; (log/info "env fingerprint" [(::catalog-id job) (:onyx/job-id job)])
   (into
     (assoc env ::master (::catalog-id job))
     (select-keys job [:onyx/job-id :onyx/doc :onyx.sim.ui/title])))
@@ -132,7 +132,7 @@
     (p/recover! (:pipeline task) nil nil)))
 
 (defn init [job]
-  (log/info "initting" job)
+  ; (log/info "initting" job)
   (let [env (-> job
               (simplify-job)
               (onyx/init)
@@ -385,7 +385,7 @@
     (let [tss-key (if (keyword? action-data)
                     action-data
                     (or (::event action-data) (:event action-data)))]
-      (log/info "transition-env event:" (or tss-key :default))
+      ; (log/info "transition-env event:" (or tss-key :default))
       tss-key)))
 
 #?

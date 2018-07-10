@@ -60,9 +60,14 @@
 (defn master-id [kb job-id]
   (env-in [kb job-id :onyx.sim.api/master]))
 
+(defn hidden-tasks [kb job-id]
+  (let [catalog-id (master-id kb job-id)
+        {:onyx.sim.console.ui/keys [hidden-tasks]} (sub kb ?job-expr :expr [:onyx.sim.ui/hidden-tasks] :job-id catalog-id)]
+    hidden-tasks))
+
 (defn render-fn [kb job-id]
   (let [catalog-id (master-id kb job-id)
-        {:onyx.sim.ui/keys [render]} @(sub kb ?job-expr :expr [:onyx.sim.ui/render] :job-id catalog-id)]
+        {:onyx.sim.consol.ui/keys [render]} (sub kb ?job-expr :expr [:onyx.sim.ui/render] :job-id catalog-id)]
     render))
 
 (defn sorted-task-labels [kb job-id]

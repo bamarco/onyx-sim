@@ -106,7 +106,7 @@
 (defmethod handle! ::submit-job
   [kb {:as event :keys [job-catalog-id]}]
   (let [snapshot (snap kb)
-        _ (log/info "snapshot" snapshot)
+        ; _ (log/info "snapshot" snapshot)
         job (q snapshot sub/?catalog-entry :catalog-id job-catalog-id)]
     (submit-jobs! kb [job])))
 
