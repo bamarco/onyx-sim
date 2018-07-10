@@ -1,7 +1,7 @@
 (ns onyx.sim.console.subscription
   (:require
     [onyx.sim.kb :refer [sub q]]
-    [onyx.sim.utils :refer [cat-into]]))
+    [onyx.sim.utils :refer [cat-into forv]]))
 
 (def ?settings
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
@@ -9,39 +9,27 @@
     :onyx.sim.kb/in {$ :datascript}
     :onyx.sim.kb.datascript/eid [:onyx.sim.console.ui/name :onyx.sim.console.ui/settings]})
 
-(def ?jobs
-  '{:onyx.sim.kb/type :onyx.sim.kb.datascript/q
-    :onyx.sim.kb.datascript/find [?job-id]
-    :onyx.sim.kb/in {$ :datascript}
-    :onyx.sim.kb.datascript/where [[_ :onyx/job-id ?job-id]]})
-
-(def ?active-jobs
-  '{:onyx.sim.kb/type :onyx.sim.kb.datascript/q
-    :onyx.sim.kb.datascript/find [?job-id]
-    :onyx.sim.kb/in {$ :datascript}
-    :onyx.sim.kb.datascript/where [[_ :onyx.sim.console.ui/job-id ?job-id]]})
-
 (def ?job-catalog
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/q
     :onyx.sim.kb/in {$ :datascript}
     :onyx.sim.kb.datascript/find [?job-id]
-    :onyx.sim.kb.datascript/where [[_ :onyx.sim.api/job-id ?job-id]]})
+    :onyx.sim.kb.datascript/where [[_ :onyx.sim.api/catalog-id ?job-id]]})
 
-(def ?job-entry
+(def ?catalog-entry
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
     :onyx.sim.kb/in {$ :datascript
-                     ?job-id :onyx.sim.api/job-id}
+                     ?catalog-id :catalog-id}
     :onyx.sim.kb.datascript/pull-expr [{:onyx.core/catalog [*]}
                                        *]
-    :onyx.sim.kb.datascript/eid [:onyx.sim.api/job-id ?job-id]})
+    :onyx.sim.kb.datascript/eid [:onyx.sim.api/catalog-id ?catalog-id]})
 
 (def ?job-expr
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
     :onyx.sim.kb.datascript/pull-expr ?expr
-    :onyx.sim.kb.datascript/eid [:onyx.sim.api/job-id ?job-id]
+    :onyx.sim.kb.datascript/eid [:onyx.sim.api/catalog-id ?job-id]
     :onyx.sim.kb/in {$ :datascript
-                     ?job-id :onyx.sim.console.ui/job-id
-                     ?expr :onyx.sim.console.ui/expr}})
+                     ?job-id :job-id
+                     ?expr :expr}})
 
 (def ?animating
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/q
@@ -54,30 +42,9 @@
     :onyx.sim.kb.datascript/pull-expr [:onyx.sim.console.ui/hidden-tasks]
     :onyx.sim.kb.datascript/eid [:onyx/job-id ?job-id]
     :onyx.sim.kb/in {$ :datascript
-                     ?job-id :onyx.sim.console.ui/job-id}})
+                     ?job-id :job-id}})
 
-; (def ?import-uris
-;   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
-;     :onyx.sim.kb.datascript/pull-expr [:onyx.sim.console.ui/import-uris]
-;     :onyx.sim.kb.datascript/eid [:onyx/job-id ?job-id]
-;     :onyx.sim.kb/in {$ :datascript
-;                      ?job-id :onyx.sim.console.ui/job-id}})
 
-; (def ?sorted-tasks
-;   '{:onyx.sim.kb/type :onyx.sim.kb.ratom/cursor
-;     :onyx.sim.kb/in {$ :state
-;                      ?job-id :onyx.sim.console.ui/job-id}
-;     :onyx.sim.kb.ratom/path [:envs ?job-id :sorted-tasks]})
-
-; (def ?env
-;   '{:onyx.sim.kb/type :onyx.sim.kb.ratom/cursor
-;     :onyx.sim.kb/in {$ :state
-;                      ?job-id :onyx.sim.console.ui/job-id}
-;     :onyx.sim.kb.ratom/path [:envs ?job-id]})
-
-(defn env-in
-  ([kb] @(get-in kb [:sim :envs]))
-  ([kb path] (get-in (env-in kb) path)))
 
 ;;;
 ;;; Subsription Functions
@@ -86,6 +53,10 @@
 ;;;     * More data driven. These fns should eventually look as much like the queries above as possible
 ;;;     * Flexible. These fns should work with both queries and subscriptions
 ;;;     * Cacheing. The knowledge-base and the Knowledge-base-state should be able to build up a cache of resolved subscription functions. Eventually this could allow for reactions in the event queue to occur with reordering of events.
+(defn env-in
+  ([kb] @(get-in kb [:sim :envs]))
+  ([kb path] (get-in (env-in kb) path)))
+
 (defn sorted-task-labels [kb job-id]
   (let [sorted-tasks (env-in kb [job-id :sorted-tasks])]
     (vec
@@ -93,13 +64,10 @@
         {:id task-name
          :label (pr-str task-name)}))))
 
-(defn jobs2 [{:as knowbase :keys [sim]}]
-  (keys (:envs sim)))
-
 (defn job-title [kb job-id]
   (let [{:onyx.sim.console.ui/keys [title]} (sub kb ?job-expr 
                                              :onyx.sim.console.ui/expr [:onyx.sim.console.ui/title]
-                                             :onyx.sim.api/job-id job-id)]
+                                             :onyx.sim.api/catalog-id job-id)]
     (or title (str job-id))))
 
 (defn nav-tab-icons
@@ -115,15 +83,18 @@
     {:id :onyx.sim.console.ui/running-jobs
      :label [:i {:class "zmdi zmdi-collection-video"}]}])
 
-(defn running-jobs 
-  ""
-  [kb]
-  (let [jobs @(sub kb ?active-jobs)]
-      ; sims (for [job-id (jobs2 kb)];[[job-id] jobs]
-      ;         {:id job-id
-      ;          :label (job-title kb job-id)})
-    jobs))
+(defn running-envs 
+  "Jobs that are still running in the simulator"
+  ([kb] (vec (vals (env-in kb))))
+  ([kb master-catalog-id]
+   (filterv 
+    #(= (:onyx.sim.api/master %) master-catalog-id)
+    (running-envs kb))))
 
+(defn running-job-ids
+  ([kb] (running-job-ids kb nil))
+  ([kb master-catalog-id]
+   (mapv :onyx/job-id (running-envs kb master-catalog-id))))
 
 (defn selected-nav 
   "The value for the main navigation selection"

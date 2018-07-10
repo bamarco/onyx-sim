@@ -280,7 +280,7 @@
           :label (str next-action)]]]))
 
 (defn- description [model job-id]
-  (let [{:onyx/keys [doc]} (listen model sub/?job-expr ::expr [:onyx/doc] ::job-id job-id)]
+  (let [{:onyx/keys [doc]} (listen model sub/?job-expr ::expr [:onyx/doc] :job-id job-id)]
     [re-com/p doc]))
 
 (defn- action-bar [model]
@@ -326,35 +326,38 @@
 (def to-uuid cljs.reader/read-string)
 
 (defn submit-job-button [model job-catalog-id]
-  (let [{:onyx/keys [job-id]} (listen model sub/?job-expr ::expr [:onyx/job-id] ::job-id job-catalog-id)]
+  (let [{:onyx/keys [job-id]} (listen model sub/?job-expr :expr [:onyx/job-id] :job-id job-catalog-id)]
     [re-com/h-box
       :children
       [
         [re-com/button
           :label "Submit"
-          :on-click #(dispatch! model :onyx.sim.console.event/submit-job ::job-id job-catalog-id)]
+          :on-click #(dispatch! model :onyx.sim.console.event/submit-job :job-catalog-id job-catalog-id)]
         [re-com/input-text
           :model (str job-id)
-          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [:onyx.sim.api/job-id job-catalog-id] :a :onyx/job-id :v (or (to-uuid %) (gen-uuid)))
+          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [:onyx.sim.api/catalog-id job-catalog-id] :a :onyx/job-id :v (or (to-uuid %) (gen-uuid)))
           :placeholder
           "Random Job ID"]]]))
 
 
-(defn manage-job [model job-id] none
+(defn manage-job-entry [model catalog-id] none
   (let [{:keys [onyx/doc ::title :onyx.core/workflow]}
-        (listen model sub/?job-expr ::expr [:onyx.core/workflow :onyx/doc ::title] ::job-id job-id)]
+        (listen model sub/?job-expr :expr [:onyx.core/workflow :onyx/doc ::title] :job-id catalog-id)
+        job-ids (listen model sub/running-job-ids catalog-id)]
     [re-com/v-box
       :children
       [
         [field-label "Title"]
         [re-com/label :label (str title)]
         [field-label "Catalog id"]
-        [re-com/label :label (str job-id)]
+        [re-com/label :label (str catalog-id)]
         [field-label "Description"]
         [re-com/p (str doc)]
         [field-label "Workflow"]
         [code :code workflow]
-        [submit-job-button model job-id]]]))
+        [field-label "Running Jobs"]
+        [code :code job-ids]
+        [submit-job-button model catalog-id]]]))
 
 (defn job-catalog [model]
   (let [jobs (listen model sub/?job-catalog)]
@@ -366,8 +369,8 @@
           :level :level1]]
         (comp
           (map
-            (fn [[job-id]]
-              [manage-job model job-id]))
+            (fn [[catalog-id]]
+              [manage-job-entry model catalog-id]))
           (interpose [re-com/gap :size "1rem"]))
         jobs)]))
 
@@ -400,12 +403,22 @@
         [eav-view db]]]))
 
 (defn running-jobs [model]
-  (let [jobs (listen model sub/running-jobs)]
-    [re-com/h-box
+  (let [envs (listen model sub/running-envs)
+        {::keys [selected-env]} (listen model sub/?settings)]
+    [re-com/v-box
       :children
-      (forv [job jobs]
-        [code :code job])]))
-    ;[job-view model job-id]
+      [
+        [re-com/title
+          :label "Running Jobs"
+          :level :level1]
+        [re-com/single-dropdown
+          :choices envs
+          :model selected-env
+          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [::name ::settings] :a ::selected-env :v %)
+          :placeholder "Select Job"
+          :id-fn :onyx/job-id
+          :label-fn #(str (:onyx/job-id %))]
+        [job-view model selected-env]]]))
 
 (defmulti display-selected 
   (fn [_ selection] 
@@ -431,7 +444,6 @@
   [model ui-key]
   [re-com/p
     (str "TODO: " ui-key)])
-  
 
 (defn selected [model]
   (let [{::keys [selected-nav]} (listen model sub/?settings)]

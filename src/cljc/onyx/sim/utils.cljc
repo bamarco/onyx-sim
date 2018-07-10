@@ -151,5 +151,5 @@
   (defmacro forv
     "for loop as a vector. Equivalent to mapv"
     [bind & body]
-    `(for ~bind ~@body)))
+    `(vec (for ~bind ~@body))))
 

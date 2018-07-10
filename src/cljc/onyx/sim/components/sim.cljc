@@ -13,7 +13,7 @@
   (let [control> (or control> (async/chan))]
     (go-loop []
       (let [[tss-or-sig ch] (async/alts! [control> tss>])]
-        (log/info "received tss" (:onyx.sim.api/event tss-or-sig))
+        ; (log/info "received tss" (:onyx.sim.api/event tss-or-sig))
         (if (= ch control>)
           (if (= tss-or-sig ::kill)
             (log/info "Kill Signal recieved. Closing job scheduler...")
@@ -21,7 +21,7 @@
               (log/warn "Unhandled signal:" tss-or-sig)
               (recur)))
           (let [{:as tss :onyx/keys [job-id] :onyx.sim.api/keys [event]} tss-or-sig
-                _ (log/info "tssing" job-id)
+                ; _ (log/info "tssing" job-id)
                 env (get @envs job-id)
                 ; _ (log/info "env retrieved" (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
                 env-after (api/<transition-env env tss)]
@@ -39,10 +39,7 @@
     (log/info "Submitting job #" job-id)
     (go (>! tss> {:onyx.sim.api/event :onyx.sim.api/init
                   :onyx/job-id job-id
-                  :onyx.sim.api/job job}))))
-        ; (>! tss> {:onyx.sim.api/event :onyx.sim.api/go-step
-        ;           :onyx/job-id job-id}))))
-                  
+                  :onyx.sim.api/job (assoc job :onyx/job-id job-id)}))))
 
 (defn transition! [{:as sim :keys [tss>]} tss]
   (go (>! tss> tss)))

@@ -35,7 +35,7 @@
       :db/cardinality :db.cardinality/many}
     {:db/ident :onyx/job-id
       :db/unique :db.unique/identity}
-    {:db/ident :onyx.sim.api/job-id
+    {:db/ident ::catalog-id
       :db/unique :db.unique/identity}
     {:db/ident :onyx.core/job
      :db/valueType :db.type/ref}
@@ -63,6 +63,13 @@
                                 :onyc.core/metadata        :metadata
                                 :onyx.core/flow-conditions :flow-conditions})
       (select-keys [:catalog :workflow :lifecycles :windows :triggers :task-scheduler :metadata :flow-conditions])))
+
+(defn- fingerprint-env [env job]
+  (log/info "env fingerprint" [(::catalog-id job) (:onyx/job-id job)])
+  (-> env
+    (assoc ::master (::catalog-id job))
+    (assoc :onyx/job-id (:onyx/job-id job))))
+    
 
 (defn- plugin? [task-state]
   (get-in task-state [:event :onyx.core/task-map :onyx/plugin]))
@@ -129,6 +136,7 @@
   (let [env (-> job
               (simplify-job)
               (onyx/init)
+              (fingerprint-env job)
               (init-plugins))]
     ; (log/debug "initted?" (get-in env [:tasks :in :pipeline]))
     (recover-plugins! env)

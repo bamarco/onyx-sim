@@ -17,7 +17,7 @@
   [job]
   ;; ???: hash off title?
   ;; ???: keywords or uuids?
-  (update job :onyx.sim.api/job-id #(or % (gen-uuid))))
+  (update job :onyx.sim.api/catalog-id #(or % (gen-uuid))))
 
 ;;;
 ;;; Knowledge Base fns
@@ -67,7 +67,7 @@
 (defmethod handle! ::init-examples
   [kb _]
   (let [jobs [example.hello/job example.flow/job]]
-    (submit-jobs! kb jobs)
+    ; (submit-jobs! kb jobs)
     (record-jobs! kb jobs)))
 
 (defmethod handle! ::init-ui
@@ -104,10 +104,10 @@
     [[:db.fn/call hide-task selected-job task-name]]))
 
 (defmethod handle! ::submit-job
-  [kb {:as event :onyx.sim.console.ui/keys [job-id]}]
+  [kb {:as event :keys [job-catalog-id]}]
   (let [snapshot (snap kb)
         _ (log/info "snapshot" snapshot)
-        job (q snapshot sub/?job-entry :onyx.sim.api/job-id job-id)]
+        job (q snapshot sub/?catalog-entry :catalog-id job-catalog-id)]
     (submit-jobs! kb [job])))
 
 (defmethod handle! ::eav
