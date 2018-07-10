@@ -208,10 +208,10 @@
 
 (defn- pretty-task-box [model job-id task-name]
   (let [env (listen model sub/env-in [job-id])
-        {::keys [render]} (listen model sub/?job-expr ::expr [::render])
+        render nil;(listen model sub/render-fn job-id)
         task-type (get-in env [:tasks task-name :event :onyx.core/task-map :onyx/type])
         task-doc (get-in env [:tasks task-name :event :onyx.core/task-map :onyx/doc])
-        local-render (get-in env [:tasks task-name :event :onyx.core/task-map ::render])
+        local-render nil;(get-in env [:tasks task-name :event :onyx.core/task-map ::render])
         {::keys [render-segments?]} (listen model sub/?settings)
         render-fn (if render-segments?
                     (or local-render render default-render)
@@ -268,7 +268,7 @@
       [summary model job-id :summary-fn (when-not only-summary? identity)]]]))
 
 (defn- next-action [model job-id]
-  (let [next-action (listen model sub/env-in [job-id])]
+  (let [next-action (listen model sub/env-in [job-id :next-action])]
     [re-com/h-box
       :gap "1ch"
       :children
@@ -281,6 +281,10 @@
 
 (defn- description [model job-id]
   (let [{:onyx/keys [doc]} (listen model sub/?job-expr ::expr [:onyx/doc] :job-id job-id)]
+    [re-com/p doc]))
+
+(defn- description2 [model job-id]
+  (let [doc (listen model sub/env-in [job-id :onyx/doc])]
     [re-com/p doc]))
 
 (defn- action-bar [model]
@@ -306,7 +310,7 @@
           :label (if running? "Stop" "Play")
           :on-click #()]]]))
 
-(defn job-view [model job-id]
+(defn env-view [model job-id]
   (let [{::keys [env-style next-action? task-hider? description?]} (listen model sub/?settings)]
     [re-com/v-box
       :children
@@ -314,7 +318,7 @@
         (when task-hider?
           [hidden-tasks model job-id])
         (when description?
-          [description model job-id])
+          [description2 model job-id])
         (when next-action?
           [next-action model job-id])
         [action-bar model]
@@ -418,7 +422,7 @@
           :placeholder "Select Job"
           :id-fn :onyx/job-id
           :label-fn #(str (:onyx/job-id %))]
-        [job-view model selected-env]]]))
+        [env-view model selected-env]]]))
 
 (defmulti display-selected 
   (fn [_ selection] 

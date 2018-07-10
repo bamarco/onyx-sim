@@ -66,10 +66,10 @@
 
 (defn- fingerprint-env [env job]
   (log/info "env fingerprint" [(::catalog-id job) (:onyx/job-id job)])
-  (-> env
-    (assoc ::master (::catalog-id job))
-    (assoc :onyx/job-id (:onyx/job-id job))))
-    
+  (into
+    (assoc env ::master (::catalog-id job))
+    (select-keys job [:onyx/job-id :onyx/doc :onyx.sim.ui/title])))
+  ;; FIXME: :onyx.sim.ui/title -> ::label
 
 (defn- plugin? [task-state]
   (get-in task-state [:event :onyx.core/task-map :onyx/plugin]))

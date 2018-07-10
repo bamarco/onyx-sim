@@ -57,6 +57,14 @@
   ([kb] @(get-in kb [:sim :envs]))
   ([kb path] (get-in (env-in kb) path)))
 
+(defn master-id [kb job-id]
+  (env-in [kb job-id :onyx.sim.api/master]))
+
+(defn render-fn [kb job-id]
+  (let [catalog-id (master-id kb job-id)
+        {:onyx.sim.ui/keys [render]} @(sub kb ?job-expr :expr [:onyx.sim.ui/render] :job-id catalog-id)]
+    render))
+
 (defn sorted-task-labels [kb job-id]
   (let [sorted-tasks (env-in kb [job-id :sorted-tasks])]
     (vec
@@ -65,9 +73,9 @@
          :label (pr-str task-name)}))))
 
 (defn job-title [kb job-id]
-  (let [{:onyx.sim.console.ui/keys [title]} (sub kb ?job-expr 
-                                             :onyx.sim.console.ui/expr [:onyx.sim.console.ui/title]
-                                             :onyx.sim.api/catalog-id job-id)]
+  (let [{:onyx.sim.console.ui/keys [title]} @(sub kb ?job-expr 
+                                              :onyx.sim.console.ui/expr [:onyx.sim.console.ui/title]
+                                              :onyx.sim.api/catalog-id job-id)]
     (or title (str job-id))))
 
 (defn nav-tab-icons
