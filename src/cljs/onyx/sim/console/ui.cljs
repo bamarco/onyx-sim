@@ -59,6 +59,14 @@
   (apply dispatcher/dispatch! (:dispatcher model) event))
 
 ;;;
+;;; Helper Functions
+;;;
+(defn env-label 
+  "The way an environment name should appear in a list"
+  [env]
+  (str (:onyx.sim/label env) " (" (:onyx/job-id env) ")"))
+
+;;;
 ;;; Re-com Style Components
 ;;;
 (defn code
@@ -103,6 +111,9 @@
   [re-com/label
     :class "field-label"
     :label label])
+
+(defn- codit [item]
+  [code :code item])
 
 ;;;
 ;;; Core Components
@@ -216,7 +227,7 @@
         render-fn (if render-segments?
                     (or local-render render default-render)
                     default-render)]
-    (log/info "ptb" task-name)
+    ; (log/info "ptb" task-name)
     [re-com/v-box
       :class "onyx-task onyx-panel"
       :gap ".25rem"
@@ -244,7 +255,7 @@
 (defn- pretty-env [model job-id]
   (let [sorted-tasks (listen model sub/env-in [job-id :sorted-tasks])
         hidden-tasks nil];(listen model hidden-tasks job-id)]
-    (log/info "sorted-tasks" job-id sorted-tasks)
+    ; (log/info "sorted-tasks" job-id sorted-tasks)
     [re-com/v-box
      :class "onyx-env"
      :children
@@ -280,10 +291,6 @@
           :label (str next-action)]]]))
 
 (defn- description [model job-id]
-  (let [{:onyx/keys [doc]} (listen model sub/?job-expr ::expr [:onyx/doc] :job-id job-id)]
-    [re-com/p doc]))
-
-(defn- description2 [model job-id]
   (let [doc (listen model sub/env-in [job-id :onyx/doc])]
     [re-com/p doc]))
 
@@ -318,7 +325,7 @@
         (when task-hider?
           [hidden-tasks model job-id])
         (when description?
-          [description2 model job-id])
+          [description model job-id])
         (when next-action?
           [next-action model job-id])
         [action-bar model]
@@ -345,14 +352,14 @@
 
 
 (defn manage-job-entry [model catalog-id] none
-  (let [{:keys [onyx/doc ::title :onyx.core/workflow]}
-        (listen model sub/?job-expr :expr [:onyx.core/workflow :onyx/doc ::title] :job-id catalog-id)
+  (let [{:keys [onyx/doc onyx.sim/label :onyx.core/workflow]}
+        (listen model sub/?job-expr :expr [:onyx.core/workflow :onyx/doc :onyx.sim/label] :job-id catalog-id)
         job-ids (listen model sub/running-job-ids catalog-id)]
     [re-com/v-box
       :children
       [
         [field-label "Title"]
-        [re-com/label :label (str title)]
+        [re-com/label :label (str label)]
         [field-label "Catalog id"]
         [re-com/label :label (str catalog-id)]
         [field-label "Description"]
@@ -378,11 +385,8 @@
           (interpose [re-com/gap :size "1rem"]))
         jobs)]))
 
-(defn- codit [item]
-  [code :code item])
-
-(defn- eav-view [db]
-  (let [eavs (d/datoms db :eavt)
+(defn- eav-view [model]
+  (let [eavs (listen model sub/datoms)
         es (map first eavs)
         as (map second eavs)
         vs (map third eavs)]
@@ -394,8 +398,7 @@
         [re-com/v-box :children (into [[field-label "Value"]] (map codit vs))]]]))
 
 (defn- db-frisk [model]
-  (let [conn (listen model sub/the-whole-conn)
-        {:as db :keys [schema]} @conn]
+  (let [schema (listen model sub/schema)]
     [re-com/v-box
       :children
       [
@@ -404,24 +407,24 @@
           :level :level1]
         [field-label "Schema"]
         [code :code schema]
-        [eav-view db]]]))
+        [eav-view model]]]))
 
-(defn running-jobs [model]
+(defn running-envs [model]
   (let [envs (listen model sub/running-envs)
-        {::keys [selected-env]} (listen model sub/?settings)]
+        selected-env (listen model sub/selected-env)]
     [re-com/v-box
       :children
       [
         [re-com/title
-          :label "Running Jobs"
+          :label "Running Environments"
           :level :level1]
         [re-com/single-dropdown
           :choices envs
           :model selected-env
-          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [::name ::settings] :a ::selected-env :v %)
-          :placeholder "Select Job"
+          :on-change #(dispatch! model ::selected-env :selected %)
+          :placeholder "Select OnyxSim Environment"
           :id-fn :onyx/job-id
-          :label-fn #(str (:onyx/job-id %))]
+          :label-fn env-label]
         [env-view model selected-env]]]))
 
 (defmulti display-selected 
@@ -440,17 +443,17 @@
   [model _]
   [job-catalog model])
 
-(defmethod display-selected ::running-jobs
+(defmethod display-selected ::running-envs
   [model _]
-  [running-jobs model])
+  [running-envs model])
 
 (defmethod display-selected :default
   [model ui-key]
   [re-com/p
-    (str "TODO: " ui-key)])
+    (str "Unhandled display key: " ui-key)])
 
 (defn selected [model]
-  (let [{::keys [selected-nav]} (listen model sub/?settings)]
+  (let [selected-nav (listen model sub/selected-nav)]
     [re-com/box
      :class "onyx-sim"
      :child
@@ -462,7 +465,7 @@
     [re-com/horizontal-bar-tabs
       :tabs choices
       :model selected-nav
-      :on-change #(dispatch! model :onyx.sim.console.event/eav :e [::name ::settings] :a ::selected-nav :v %)]))
+      :on-change #(dispatch! model ::selected-nav :selected %)]))
 
 (defn selector [model]
   [re-com/v-box

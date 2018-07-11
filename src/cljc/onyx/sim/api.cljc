@@ -68,8 +68,7 @@
   ; (log/info "env fingerprint" [(::catalog-id job) (:onyx/job-id job)])
   (into
     (assoc env ::master (::catalog-id job))
-    (select-keys job [:onyx/job-id :onyx/doc :onyx.sim.ui/title])))
-  ;; FIXME: :onyx.sim.ui/title -> ::label
+    (select-keys job [:onyx/job-id :onyx/doc :onyx.sim/label])))
 
 (defn- plugin? [task-state]
   (get-in task-state [:event :onyx.core/task-map :onyx/plugin]))
@@ -90,6 +89,18 @@
   (let [f (get-in event [:onyx.core/compiled :compiled-before-task-start-fn])]
     (merge event (f event))))
 
+(defn- plugin-kw [{:onyx/keys [plugin type]}]
+  (if (simple-keyword? plugin)
+    (keyword
+      (-> plugin name str)
+      (cond
+        (= :input type)
+        "input"
+        
+        (= :output type)
+        "output"))
+    plugin))
+
 (defn- init-plugin [task-state]
   ; (log/debug "evvvvvvv" 
   ;   (get-in task-state [:event :onyx.core/task-map :onyx/name]) 
@@ -97,14 +108,7 @@
   ;   (:seq/seq (lc-hack (:event task-state))))
   (let [task (get-in task-state [:event :onyx.core/task-map])
         hacked-event (lc-hack (:event task-state))
-        ns-name (str (name (:onyx/plugin task)))
-        init-name (cond 
-                    (= :input (:onyx/type task))
-                    "input"
-                    
-                    (= :output (:onyx/type task))
-                    "output")
-        init (kw->fn (keyword ns-name init-name))]
+        init (kw->fn (plugin-kw task))]
     (assoc
       task-state
       :pipeline

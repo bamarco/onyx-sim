@@ -24,9 +24,9 @@
                  [posh "0.5.5"]
                  [com.taoensso/timbre "4.10.0"]
                  [prismatic/schema "1.1.7"]
-                 [org.onyxplatform/onyx-spec "0.12.7.1-SNAPSHOT"]
-                 [org.onyxplatform/onyx "0.12.8-SNAPSHOT"]
-                 [org.onyxplatform/onyx-local-rt "0.12.7.0"]]
+                 [org.onyxplatform/onyx-spec "0.13.0.1-SNAPSHOT"]
+                 [org.onyxplatform/onyx "0.13.1-SNAPSHOT"]
+                 [org.onyxplatform/onyx-local-rt "0.13.0.1-SNAPSHOT"]]
 
   :min-lein-version "2.6.1"
 

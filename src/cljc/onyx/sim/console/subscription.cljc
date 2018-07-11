@@ -1,7 +1,8 @@
 (ns onyx.sim.console.subscription
   (:require
     [onyx.sim.kb :refer [sub q]]
-    [onyx.sim.utils :refer [cat-into forv]]))
+    [onyx.sim.utils :refer [cat-into forv]]
+    [datascript.core :as d]))
 
 (def ?settings
   '{:onyx.sim.kb/type :onyx.sim.kb.datascript/pull
@@ -20,6 +21,7 @@
     :onyx.sim.kb/in {$ :datascript
                      ?catalog-id :catalog-id}
     :onyx.sim.kb.datascript/pull-expr [{:onyx.core/catalog [*]}
+                                       {:onyx.core/flow-conditions [*]}
                                        *]
     :onyx.sim.kb.datascript/eid [:onyx.sim.api/catalog-id ?catalog-id]})
 
@@ -62,12 +64,12 @@
 
 (defn hidden-tasks [kb job-id]
   (let [catalog-id (master-id kb job-id)
-        {:onyx.sim.console.ui/keys [hidden-tasks]} (sub kb ?job-expr :expr [:onyx.sim.ui/hidden-tasks] :job-id catalog-id)]
+        {:onyx.sim.console.ui/keys [hidden-tasks]} @(sub kb ?job-expr :expr [:onyx.sim.ui/hidden-tasks] :job-id catalog-id)]
     hidden-tasks))
 
 (defn render-fn [kb job-id]
   (let [catalog-id (master-id kb job-id)
-        {:onyx.sim.consol.ui/keys [render]} (sub kb ?job-expr :expr [:onyx.sim.ui/render] :job-id catalog-id)]
+        {:onyx.sim.consol.ui/keys [render]} @(sub kb ?job-expr :expr [:onyx.sim.ui/render] :job-id catalog-id)]
     render))
 
 (defn sorted-task-labels [kb job-id]
@@ -78,10 +80,10 @@
          :label (pr-str task-name)}))))
 
 (defn job-title [kb job-id]
-  (let [{:onyx.sim.console.ui/keys [title]} @(sub kb ?job-expr 
-                                              :onyx.sim.console.ui/expr [:onyx.sim.console.ui/title]
-                                              :onyx.sim.api/catalog-id job-id)]
-    (or title (str job-id))))
+  (let [{:onyx.sim/keys [label]} @(sub kb ?job-expr 
+                                    :expr [:onyx.sim/label]
+                                    :job-id job-id)]
+    (or label (str job-id))))
 
 (defn nav-tab-icons
   "Icons for navigation tabs"
@@ -93,7 +95,7 @@
      :label [:i {:class "zmdi zmdi-cloud-box"}]}
     {:id :onyx.sim.console.ui/job-catalog
      :label [:i {:class "zmdi zmdi-widgets"}]}
-    {:id :onyx.sim.console.ui/running-jobs
+    {:id :onyx.sim.console.ui/running-envs
      :label [:i {:class "zmdi zmdi-collection-video"}]}])
 
 (defn running-envs 
@@ -115,7 +117,23 @@
   (let [{:onyx.sim.console.ui/keys [selected-nav]} @(sub kb ?settings)]
     (or selected-nav :onyx.sim.console.ui/settings)))
 
-(defn the-whole-conn 
+(defn selected-env
+  "The value for the selected env in the running envs section"
+  [kb]
+  (let [{:onyx.sim.console.ui/keys [selected-env]} @(sub kb ?settings)]
+    selected-env))
+
+(defn the-db 
   "Just give me the raw conn"
   [kb]
-  (get-in kb [:datascript :conn]))
+  @(get-in kb [:datascript :conn]))
+
+(defn schema
+  "The schema of the datascript db"
+  [kb]
+  (:schema (the-db kb)))
+
+(defn datoms
+  "The datoms in the datascript db"
+  [kb]
+  (d/datoms (the-db kb) :eavt))

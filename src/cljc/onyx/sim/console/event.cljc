@@ -27,6 +27,10 @@
   [kb txs]
   (d/transact! (get-in kb [:datascript :conn]) (into [] txs)))
 
+(defn eav!
+  [kb e a v]
+  (tx! kb [[:db/add e a v]]))
+
 (defn tss!
   "Simplified simulator transitions"
   [kb tsses]
@@ -105,6 +109,7 @@
 
 (defmethod handle! ::submit-job
   [kb {:as event :keys [job-catalog-id]}]
+  (log/info "submitting" job-catalog-id)
   (let [snapshot (snap kb)
         ; _ (log/info "snapshot" snapshot)
         job (q snapshot sub/?catalog-entry :catalog-id job-catalog-id)]
@@ -112,5 +117,22 @@
 
 (defmethod handle! ::eav
   [kb {:as event :keys [e a v]}]
-  (tx! kb
-    [[:db/add e a v]]))
+  (eav! kb e a v))
+
+(defmethod handle! :onyx.sim.console.ui/selected-nav
+  [kb {:keys [selected]}]
+  (eav! kb
+    [:onyx.sim.console.ui/name :onyx.sim.console.ui/settings] 
+    :onyx.sim.console.ui/selected-nav 
+    selected))
+
+(defmethod handle! :onyx.sim.console.ui/selected-env
+  [kb {:keys [selected]}]
+  (eav! kb
+    [:onyx.sim.console.ui/name :onyx.sim.console.ui/settings] 
+    :onyx.sim.console.ui/selected-env
+    selected))
+
+(defmethod handle! :default
+  [kb event]
+  (log/warn "Unhandled event:" event))

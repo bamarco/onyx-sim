@@ -97,7 +97,7 @@
 (defn seq->chan-job [chan-id]
   {:catalog 
    [{:onyx/type :input
-     :onyx/plugin :onyx.plugin.seq
+     :onyx/plugin :onyx.plugin.seq/input
      :onyx/batch-size batch-size
      :onyx/name :in}
     {:onyx/name       ::identity

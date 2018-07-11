@@ -1,7 +1,4 @@
-(ns onyx.sim.examples.hello
-  (:require [taoensso.timbre :as log]
-            [onyx.sim.api :as onyx]))
-
+(ns onyx.sim.examples.hello)
 
 (def input-segments
   [{:hello-msg "Hello, World!"}])
@@ -13,7 +10,7 @@
 (def job
   {:onyx/type :onyx.core/job
    :onyx/doc "Simulation Example."
-   :onyx.sim.ui/title "Hello"
+   :onyx.sim/label "Hello"
    :onyx.core/catalog [{:onyx/name :in
                         :onyx/type :input
                         :onyx/batch-size onyx-batch-size}
