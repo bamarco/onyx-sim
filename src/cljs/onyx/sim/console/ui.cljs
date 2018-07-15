@@ -294,7 +294,7 @@
   (let [doc (listen model sub/env-in [job-id :onyx/doc])]
     [re-com/p doc]))
 
-(defn- action-bar [model]
+(defn- action-bar [model job-id]
   ;; FIXME: running?
   (let [running? (listen model sub/?animating)]
     [re-com/h-box
@@ -304,35 +304,36 @@
         [re-com/button
           :label "Tick"
           :disabled? running?
-          :on-click #()]
+          :on-click #(dispatch! model :onyx.sim.console.event/tick :job-id job-id)]
         [re-com/button
           :label "Step"
           :disabled? running?
-          :on-click #()]
+          :on-click #(dispatch! model :onyx.sim.console.event/step :job-id job-id)]
         [re-com/button
           :label "Drain"
           :disabled? running?
-          :on-click #()]
+          :on-click #(dispatch! model :onyx.sim.console.event/drain :job-id job-id)]
         [re-com/button
           :label (if running? "Stop" "Play")
-          :on-click #()]]]))
+          :on-click #(dispatch! model (if running? :onyx.sim.console.event/stop :onyx.sim.console.event/play) :job-id job-id)]]]))
 
 (defn env-view [model job-id]
   (let [{::keys [env-style next-action? task-hider? description?]} (listen model sub/?settings)]
-    [re-com/v-box
-      :children
-      [
-        (when task-hider?
-          [hidden-tasks model job-id])
-        (when description?
-          [description model job-id])
-        (when next-action?
-          [next-action model job-id])
-        [action-bar model]
-        (case env-style
-          ::pretty-env [pretty-env model job-id]
-          ::raw-env    [raw-env model job-id]
-          [warn "Unknown environment style" env-style])]]))
+    (if-not job-id none
+      [re-com/v-box
+        :children
+        [
+          (when task-hider?
+            [hidden-tasks model job-id])
+          (when description?
+            [description model job-id])
+          (when next-action?
+            [next-action model job-id])
+          [action-bar model job-id]
+          (case env-style
+            ::pretty-env [pretty-env model job-id]
+            ::raw-env    [raw-env model job-id]
+            [warn "Unknown environment style" env-style])]])))
 
 (def to-uuid cljs.reader/read-string)
 

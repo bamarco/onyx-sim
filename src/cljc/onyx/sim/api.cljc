@@ -5,6 +5,7 @@
     [onyx-local-rt.api :as onyx]
     [onyx-local-rt.impl :as i]
     [reagent.core :as r]
+    [onyx.sim.utils :refer [read-chan? <apply]]
     [onyx.static.util :refer [kw->fn]]
     [onyx.plugin.protocols :as p]
     [onyx.plugin.core-async]
@@ -12,10 +13,9 @@
     [clojure.spec.alpha :as s]
     [onyx.sim.log.zookeeper :as zlog]
     [onyx.extensions :as extensions]
-    [clojure.core.async.impl.protocols :refer [WritePort ReadPort Channel closed?]]
-    [clojure.core.async :as async :refer [go go-loop <! >!]])
-  #?(:cljs
-     (:require-macros [onyx.sim.api :refer [<transition-env]])))
+    [clojure.core.async :as async :refer [go go-loop <! >!]]))
+  ; #?(:cljs
+  ;    (:require-macros [onyx.sim.api :refer [<transition-env]])))
 
 (defonce onyx-batch-size 20)
 
@@ -213,9 +213,6 @@
           [task-name (:outputs task)])))
     (:tasks env)))
 
-(defn read-chan? [obj] 
-  (satisfies? ReadPort obj))
-
 (defn- go-batch 
   "borrows from https://stackoverflow.com/questions/33620388/how-to-properly-batch-messages-with-core-async"
   [in out max-time max-count]
@@ -392,13 +389,14 @@
       ; (log/info "transition-env event:" (or tss-key :default))
       tss-key)))
 
-#?
-(:clj
-  (defmacro <transition-env [env action-data]
-    `(let [maybe-chan# (transition-env ~env ~action-data)]
-       (if (read-chan? maybe-chan#)
-         (<! maybe-chan#)
-         maybe-chan#))))
+; #?
+; (:clj
+;   (defmacro <transition-env [env action-data]
+;     (<apply env action-data)))
+    ; `(let [maybe-chan# (transition-env ~env ~action-data)]
+    ;    (if (read-chan? maybe-chan#)
+    ;      (<! maybe-chan#)
+    ;      maybe-chan#))))
 
 (defn go-transitions [env transitions]
   (go-loop [env env
@@ -406,7 +404,7 @@
     ; (log/info "tss" (first transitions))
     (if (empty? transitions)
       env
-      (let [env (<transition-env env (first transitions))]
+      (let [env (<apply transition-env env (first transitions))]
         (recur env (rest transitions))))))
 
 (defn clear-signals [env]
@@ -439,7 +437,7 @@
 
 (defn go-cycle [env & {:as opts :keys [break-point] :or {break-point :lifecycle/read-batch}}]
   (go-loop [env env]
-    (let [env (<transition-env env ::go-tick)]
+    (let [env (<apply transition-env env ::go-tick)]
       ; (log/info "cycle next-action" (:next-action env) (drained? env))
       (if (= (:next-action env) break-point)
         env

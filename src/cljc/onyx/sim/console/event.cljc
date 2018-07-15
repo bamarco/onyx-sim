@@ -79,28 +79,34 @@
   (tx! kb base-ui))
 
 (defmethod handle! ::tick
-  [kb {:as event :keys [selected-job]}]
+  [kb {:as event :keys [job-id]}]
   (tss! kb
-    [{:onyx/job-id selected-job
+    [{:onyx/job-id job-id
       :onyx.sim.api/event :onyx.sim.api/go-tick}]))
 
 (defmethod handle! ::step
-  [kb {:as event :keys [selected-job]}]
+  [kb {:as event :keys [job-id]}]
   (tss! kb
-    [{:onyx/job-id selected-job
+    [{:onyx/job-id job-id
       :onyx.sim.api/event :onyx.sim.api/go-step}]))
 
 (defmethod handle! ::drain
-  [kb {:as event :keys [selected-job]}]
+  [kb {:as event :keys [job-id]}]
   (tss! kb
-    [{:onyx/job-id selected-job
+    [{:onyx/job-id job-id
       :onyx.sim.api/event :onyx.sim.api/go-drain}]))
 
 (defmethod handle! ::play
-  [kb {:as event :keys [selected-job]}]
+  [kb {:as event :keys [job-id]}]
   (tss! kb
-    [{:onyx/job-id selected-job
+    [{:onyx/job-id job-id
       :onyx.sim.api/event :onyx.sim.api/go-step-drain}]))
+
+(defmethod handle! ::stop
+  [kb {:as event :keys [job-id]}]
+  (tss! kb
+    [{:onyx/job-id job-id
+      :onyx.sim.api/event :onyx.sim.api/suspend}]))
 
 (defmethod handle! ::hide-task
   [kb {:as event :keys [selected-job task-name]}]

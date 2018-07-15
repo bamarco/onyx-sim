@@ -8,6 +8,7 @@
     [onyx.plugin.null]
     [onyx.plugin.core-async]
     [onyx.static.util :refer [kw->fn]]
+    [onyx.sim.utils :refer [<apply]]
     [onyx.plugin.protocols :as p]
     [datascript.core :as d]
     [onyx.sim.lifecycle :as lc]
@@ -233,7 +234,7 @@
     (test-async
       (test-within 1000
         (go
-          (let [env (api/<transition-env env :onyx.sim.api/go-drain)]
+          (let [env (<apply api/transition-env env :onyx.sim.api/go-drain)]
             (is
               (= 
                 (get-in env [:tasks :out :outputs])
@@ -241,7 +242,7 @@
     (test-async
       (test-within 1000
         (go
-          (let [env (api/<transition-env batch-env :onyx.sim.api/go-drain)]
+          (let [env (<apply api/transition-env batch-env :onyx.sim.api/go-drain)]
             (is
               (=
                 (get-in env [:tasks :out :outputs])
@@ -254,8 +255,8 @@
     (test-async
       (test-within 1000
         (go
-          (let [drained-env (api/<transition-env env :onyx.sim.api/go-drain)
-                flushed-env (api/<transition-env drained-env :onyx.sim.api/go-write!)]
+          (let [drained-env (<apply api/transition-env env :onyx.sim.api/go-drain)
+                flushed-env (<apply api/transition-env drained-env :onyx.sim.api/go-write!)]
             (is
               (=
                 (get-in drained-env [:tasks :out :outputs])

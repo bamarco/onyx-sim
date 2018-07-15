@@ -1,12 +1,13 @@
 (ns onyx.sim.utils
-  (:require [taoensso.timbre :as log]
-            [clojure.pprint :refer [pprint]]
-            #?(:clj [clojure.edn :as reader])
-            [datascript.core :as d]
-;;             #?(:clj [clojure.core.async :refer [<! chan go]]
-;;                :cljs [clojure.core.async :refer [<! chan]])
-            #?(:clj [clojure.java.io :as io]))
-  #?(:cljs (:require-macros [onyx.sim.utils :refer [xfn stepper]])))
+  (:require 
+    [taoensso.timbre :as log]
+    [clojure.pprint :refer [pprint]]
+    [clojure.core.async.impl.protocols :refer [WritePort ReadPort Channel]]
+    #?(:clj [clojure.edn :as reader])
+    [datascript.core :as d]
+    [clojure.core.async :refer [<!]]
+    #?(:clj [clojure.java.io :as io]))
+  #?(:cljs (:require-macros [onyx.sim.utils :refer [xfn stepper <apply]])))
 ;;              [cljs.core.async.macros :refer [go]]
                             
 
@@ -152,4 +153,15 @@
     "for loop as a vector. Equivalent to mapv"
     [bind & body]
     `(vec (for ~bind ~@body))))
+
+(defn read-chan? [obj] 
+  (satisfies? ReadPort obj))
+
+#?
+(:clj
+  (defmacro <apply [f & args]
+    `(let [seg-or-chan# (~f ~@args)]
+       (if (read-chan? seg-or-chan#)
+         (<! seg-or-chan#)
+         seg-or-chan#))))
 
