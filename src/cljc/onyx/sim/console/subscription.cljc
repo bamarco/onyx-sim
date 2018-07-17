@@ -1,6 +1,7 @@
 (ns onyx.sim.console.subscription
   (:require
     [onyx.sim.kb :refer [sub q]]
+    [onyx.sim.components.sim :as sim]
     [onyx.sim.utils :refer [cat-into forv]]
     [datascript.core :as d]))
 
@@ -55,9 +56,8 @@
 ;;;     * More data driven. These fns should eventually look as much like the queries above as possible
 ;;;     * Flexible. These fns should work with both queries and subscriptions
 ;;;     * Cacheing. The knowledge-base and the Knowledge-base-state should be able to build up a cache of resolved subscription functions. Eventually this could allow for reactions in the event queue to occur with reordering of events.
-(defn env-in
-  ([kb] @(get-in kb [:sim :envs]))
-  ([kb path] (get-in (env-in kb) path)))
+(defn env-in [kb & args]
+  (apply sim/env-in (:sim kb) args))
 
 (defn master-id [kb job-id]
   (env-in [kb job-id :onyx.sim.api/master]))

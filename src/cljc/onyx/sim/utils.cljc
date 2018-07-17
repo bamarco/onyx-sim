@@ -5,11 +5,12 @@
     [clojure.core.async.impl.protocols :refer [WritePort ReadPort Channel]]
     #?(:clj [clojure.edn :as reader])
     [datascript.core :as d]
-    [clojure.core.async :refer [<!]]
+    [clojure.core.async :refer [<! go go-loop]]
     #?(:clj [clojure.java.io :as io]))
-  #?(:cljs (:require-macros [onyx.sim.utils :refer [xfn stepper <apply]])))
-;;              [cljs.core.async.macros :refer [go]]
-                            
+  #?(:cljs 
+     (:require-macros 
+        [onyx.sim.utils :refer [xfn stepper <apply go-let controlled-loop]])))
+        ; [cljs.core.async.macros :refer [go]])))
 
 ;;;
 ;;; !!!: This is an experimental volatile file. Do not expect it to stay the same.
@@ -154,14 +155,39 @@
     [bind & body]
     `(vec (for ~bind ~@body))))
 
+#?
+(:clj
+  (defmacro controlled-loop 
+    "Create a go-loop that returns a control chan. Intended to be used in conjunction with alts!"
+    [control> & body]
+    `(let [~(symbol (namespace control>) (name control>)) (or ~control> (async/chan))]
+      (go-loop [] ~@body)
+      ~control>)))
+
 (defn read-chan? [obj] 
   (satisfies? ReadPort obj))
 
 #?
 (:clj
-  (defmacro <apply [f & args]
+  (defmacro <apply
+    "If the function returns a chan take a segment from it. Meant for use with a promise chan or for returning a go block. Rationale: The go macro stops translating at the fn barrier and sometimes a function only optionally needs to perform asynchronous operations"
+    [f & args]
     `(let [seg-or-chan# (~f ~@args)]
        (if (read-chan? seg-or-chan#)
          (<! seg-or-chan#)
          seg-or-chan#))))
+
+#?
+(:clj
+  (defmacro go-let
+    "If the item is a chan take and execute body inside a go-block. Otherwise just execute the body. Use in conjunction with <apply when calling a function that returns a go-let block"
+    [[sym seg-or-chan] & body]
+    `(if (read-chan? ~seg-or-chan)
+       (go
+        (let [~sym (<! ~seg-or-chan)]
+          ~@body))
+       (let [~sym ~seg-or-chan]
+         ~@body))))
+      
+        
 

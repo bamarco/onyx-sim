@@ -2,38 +2,20 @@
   (:require
     [com.stuartsierra.component :as component]
     [taoensso.timbre :as log]
-    [onyx.sim.api :as api]
+    ; #?(:clj [clj-datetime :as time]
+    ;    :cljs [cljs-datetime :as time])
     [datascript.core :as d]
-    [onyx.sim.utils :refer [gen-uuid <apply]]
+    [onyx.sim.utils :refer [gen-uuid <apply go-let controlled-loop]]
+    [onyx.sim.api :as api]
     [clojure.core.async :as async :refer [go go-loop <! >!]]
     #?(:cljs [reagent.core :refer [atom]])))
 
-(defn kill-warn [control>]
-  (fn [[sig ch]]
-    (when (and (= ch control>) (= sig :kill))
-      (log/info "Kill Signal received."))))
-
-; (defn alt-loop! [{:as chans :keys [control>]}]
-;   (let [control> (or control> (async/chan))]
-;     (let [[seg ch] (async/alts! chans)]
-;       (condp
-;         (fn [[seg ch] [ch-guard kw-guard]]
-;           (if (keyword? seg)
-;             (and (= kw-guard seg) (= ch ch-cguard))
-;             (and (= kw-guard (guard-type seg) (= ch ch-guard)))))
-;         [seg ch]))
-;     control>))
-
-(defn- controlled-loop [control> the-loop]
-  (let [control> (or control> (async/chan))]
-    (do the-loop)
-    control>))
-
-(defn fire-transition? [now {:as tss :keys [last-fired frequency]}]
+(defn- fire-transition? [now {:as tss :keys [last-fired frequency]}]
   (= now (+ last-fired frequency)))
 
-(defn min-timeout [tsses]
-  (let [now nil]
+(defn- min-timeout [state]
+  (let [now nil;(time/now)
+        tsses (get @state ::recurring-tsses)]
     (transduce
       (map 
         (fn [{:keys [frequency last-fired]}]
@@ -41,60 +23,71 @@
       min
       tsses)))
 
-; (defn go-envs2! [envs-atom recurring-tsses tss> & {:as opts :keys [control>]}]
-;   (controlled-loop control>
+(defn- tss!> [state tss]
+  (let [env-id (:onyx/job-id tss)
+        state* @state
+        env (get-in state* [::envs env-id])]
+    (go-let [env-after (api/transition-env env tss)]
+      ;; TODO: if recurring tss update last-fired time
+      (when-not (compare-and-set! state state* (assoc-in state* [::envs env-id] env-after))
+        ;; FIXME: Not quite correct on the exception logic. Adding new envs should not be a problem, but currently will race.
+        (throw (ex-info "The envs-atom should only be set from the go-envs! loop. Race conditions may occur. Failed to process tss." {:tss tss}))))))
+
+(defn- fire-recurring!> [state]
+  (let [now nil;;(time/now)
+        state* @state
+        tsses (get state* ::recurring-tsses)]
+    (go
+      (doseq [tss (filter (partial fire-transition? now) tsses)]
+        (<apply tss!> state tss)))))
+
+(defn- handle-tsses!> [state tss> & {:as opts :keys [control>]}]
+  (controlled-loop control>
+    (let [timeout (min-timeout state)
+          _ (log/info "tsses timeout" timeout)
+          timeout> (when timeout (async/timeout timeout))
+          [seg ch] (async/alts! (into [] (remove nil?) [control> tss> timeout>]))]
+      (condp = ch
+        control>
+        (case seg
+          ::kill (log/info "Kill Signal received. Closing job scheduler...")
+          (do (log/warn "Unhandled signal:" seg) (recur)))
+
+        tss>
+        (do
+          (log/info "Handles tss" seg) 
+          (<apply tss!> state seg) (recur))
+
+        timeout>
+        (do 
+          (log/info "Handle timeout")
+          (<apply fire-recurring!> state) (recur))))))
+
+; (defn go-envs! [envs tss> & {:as opts :keys [control>]}]
+;   ; (log/info "go-envs!")
+;   (let [control> (or control> (async/chan))]
 ;     (go-loop []
-;       (let [now nil
-;             timeout> (async/timeout (min-timeout recurring-tsses))
-;             [seg ch] (async/alts! [control> tss> timeout>])
-;             tss! (fn [tss]
-;                    (let [env-id (:onyx/job-id tss)
-;                          env (get @envs-atom env-id)
-;                          env-after (<apply api/transition-env env tss)]
-;                     ;; TODO: if recurring tss update last-fired time
-;                     (when-not (compare-and-set! envs-atom envs (assoc envs env-id env-after))
-;                       ;; FIXME: Not quite correct on the exception logic. Adding new envs should not be a problem.
-;                       (throw (ex-info "The envs-atom should only be set from the go-envs! loop. Race conditions may occur. Failed to process tss." {:tss tss})))))]
-;         (condp = ch
-;           control>
-;           (case seg
-;             ::kill (log/info "Kill Signal received. Closing job scheduler...")
-;             (do (log/warn "Unhandled signal:" seg) (recur)))
-
-;           tss>
-;           (do (tss! seg) (recur))
-
-;           timeout>
-;           (let [now nil]
-;             (doseq [tss (filter (partial fire-transition? now) recurring-tsses)]
-;               (tss! tss))
-;             (recur)))))))
-
-(defn go-envs! [envs tss> & {:as opts :keys [control>]}]
-  ; (log/info "go-envs!")
-  (let [control> (or control> (async/chan))]
-    (go-loop []
-      (let [[tss-or-sig ch] (async/alts! [control> tss>])]
-        ; (log/info "received tss" (:onyx.sim.api/event tss-or-sig))
-        (if (= ch control>)
-          (if (= tss-or-sig ::kill)
-            (log/info "Kill Signal recieved. Closing job scheduler...")
-            (do 
-              (log/warn "Unhandled signal:" tss-or-sig)
-              (recur)))
-          (let [{:as tss :onyx/keys [job-id] :onyx.sim.api/keys [event]} tss-or-sig
-                _ (log/info "tssing" job-id)
-                env (get @envs job-id)
-                ; _ (log/info "env retrieved" (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
-                env-after (<apply api/transition-env env tss)]
-            (swap! envs assoc job-id env-after)
-            (when (and (= event :onyx.sim.api/go-step)
-                       (not= (api/status env-after) :onyx.sim.api/polls-closed))
-              ;; FIXME: use different marker for continuous transitions
-              (go (>! tss> tss)))
+;       (let [[tss-or-sig ch] (async/alts! [control> tss>])]
+;         ; (log/info "received tss" (:onyx.sim.api/event tss-or-sig))
+;         (if (= ch control>)
+;           (if (= tss-or-sig ::kill)
+;             (log/info "Kill Signal recieved. Closing job scheduler...")
+;             (do 
+;               (log/warn "Unhandled signal:" tss-or-sig)
+;               (recur)))
+;           (let [{:as tss :onyx/keys [job-id] :onyx.sim.api/keys [event]} tss-or-sig
+;                 _ (log/info "tssing" job-id)
+;                 env (get @envs job-id)
+;                 ; _ (log/info "env retrieved" (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
+;                 env-after (<apply api/transition-env env tss)]
+;             (swap! envs assoc job-id env-after)
+;             (when (and (= event :onyx.sim.api/go-step)
+;                        (not= (api/status env-after) :onyx.sim.api/polls-closed))
+;               ;; FIXME: use different marker for continuous transitions
+;               (go (>! tss> tss)))
               
-            (recur)))))
-    control>))
+;             (recur)))))
+;     control>))
 
 (defn submit-job [{:keys [tss>]} job]
   (let [job-id (or (:onyx/job-id job) (gen-uuid))]
@@ -110,17 +103,22 @@
   (when control>
     (go (>! control> ::kill))))
 
-(defrecord OnyxSimulator [envs tss> control>]
+;
+(defn env-in
+  ([{:keys [state]}] (::envs @state))
+  ([sim path] (get-in (env-in sim) path)))
+
+(defrecord OnyxSimulator [state tss> control>]
   ;; ???: give tss> a buffer. May need to be flushed on stop.
   component/Lifecycle
   (start [component]
     (let [tss> (or tss> (async/chan))
-          envs (or envs (atom {}))]
+          state (or state (atom {::envs {} ::recurring-tsses []}))]
       (assoc
         component
         :tss> tss>
-        :envs envs
-        :control> (or control> (go-envs! envs tss>)))))
+        :state state
+        :control> (or control> (handle-tsses!> state tss>)))))
   (stop [component]
     (kill! component)
     (assoc component
