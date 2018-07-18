@@ -15,7 +15,7 @@
 
 (defn- min-timeout [state]
   (let [now nil;(time/now)
-        tsses (get @state ::recurring-tsses)]
+        tsses (get state ::recurring-tsses)]
     (transduce
       (map 
         (fn [{:keys [frequency last-fired]}]
@@ -23,27 +23,36 @@
       min
       tsses)))
 
-(defn- tss!> [state tss]
+(defn- update-fired-tss [state* {:as tss ::keys [tss-id recurring? last-fired]}]
+  (let [now nil];(time/now)])
+    (if recurring?
+      (-> state*
+        (assoc-in [::recurring-tsses tss-id] tss)
+        (assoc-in [::recurring-tsses tss-id ::last-fired] now))
+      state*)))
+
+(defn- tss!> [state* tss]
   (let [env-id (:onyx/job-id tss)
-        state* @state
         env (get-in state* [::envs env-id])]
     (go-let [env-after (api/transition-env env tss)]
-      ;; TODO: if recurring tss update last-fired time
-      (when-not (compare-and-set! state state* (assoc-in state* [::envs env-id] env-after))
-        ;; FIXME: Not quite correct on the exception logic. Adding new envs should not be a problem, but currently will race.
-        (throw (ex-info "The envs-atom should only be set from the go-envs! loop. Race conditions may occur. Failed to process tss." {:tss tss}))))))
+      (-> state*
+        (update-fired-tss tss)
+        (assoc-in [::envs env-id] env-after)))))
 
-(defn- fire-recurring!> [state]
+(defn- fire-recurring!> [state*]
   (let [now nil;;(time/now)
-        state* @state
-        tsses (get state* ::recurring-tsses)]
-    (go
-      (doseq [tss (filter (partial fire-transition? now) tsses)]
-        (<apply tss!> state tss)))))
+        tsses (filter (partial fire-transition? now) (get state* ::recurring-tsses))]
+    (go-loop [state* state*
+              tsses (vals tsses)]
+      (let [tss (first tsses)]
+        (if-not tss state*
+          (let [state-after* (<apply tss!> state* tss)]
+            (recur state-after* (rest tsses))))))))
 
 (defn- handle-tsses!> [state tss> & {:as opts :keys [control>]}]
   (controlled-loop control>
-    (let [timeout (min-timeout state)
+    (let [state* @state
+          timeout (min-timeout state*)
           _ (log/info "tsses timeout" timeout)
           timeout> (when timeout (async/timeout timeout))
           [seg ch] (async/alts! (into [] (remove nil?) [control> tss> timeout>]))]
@@ -54,14 +63,18 @@
           (do (log/warn "Unhandled signal:" seg) (recur)))
 
         tss>
-        (do
-          (log/info "Handles tss" seg) 
-          (<apply tss!> state seg) (recur))
+        (let [state-after* (<apply tss!> state* seg)]
+          (log/info "Handle tss" seg)
+          (if (compare-and-set! state state* state-after*)
+            (recur)
+            (throw (ex-info "The envs-atom should only be set from the handle-tsses! loop. Race conditions may occur. Failed to process tss" {:tss seg}))))
 
         timeout>
-        (do 
+        (let [state-after* (<apply fire-recurring!> state)]
           (log/info "Handle timeout")
-          (<apply fire-recurring!> state) (recur))))))
+          (if (compare-and-set! state state* state-after*)
+            (recur)
+            (throw (ex-info "The envs-atom should only be set from the handle-tsses! loop. Race conditions may occur" {}))))))))
 
 ; (defn go-envs! [envs tss> & {:as opts :keys [control>]}]
 ;   ; (log/info "go-envs!")
