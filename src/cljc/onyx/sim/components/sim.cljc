@@ -2,29 +2,46 @@
   (:require
     [com.stuartsierra.component :as component]
     [taoensso.timbre :as log]
-    ; #?(:clj [clj-datetime :as time]
-    ;    :cljs [cljs-datetime :as time])
+    #?(:clj [clj-time.core :as time]
+       :cljs [cljs-time.core :as time])
     [datascript.core :as d]
     [onyx.sim.utils :refer [gen-uuid <apply go-let controlled-loop]]
     [onyx.sim.api :as api]
     [clojure.core.async :as async :refer [go go-loop <! >!]]
     #?(:cljs [reagent.core :refer [atom]])))
 
-(defn- fire-transition? [now {:as tss :keys [last-fired frequency]}]
+(defn- fire-transition? [now {:as tss ::keys [last-fired frequency]}]
   (= now (+ last-fired frequency)))
 
-(defn- min-timeout [state]
-  (let [now nil;(time/now)
-        tsses (get state ::recurring-tsses)]
-    (transduce
-      (map 
-        (fn [{:keys [frequency last-fired]}]
-          (- frequency (- now last-fired))))
-      min
-      tsses)))
+(defn- next-fire [{::keys [frequency last-fired]}]
+  (when (and last-fired frequency)
+    (time/plus last-fired frequency)))
+
+(defn- min-time
+  ([] nil)
+  ([lowest-time] lowest-time)
+  ([lowest-time another-time]
+   (cond
+     (not lowest-time)
+     another-time
+
+     (not another-time)
+     lowest-time
+
+     :else
+     (if (time/before? lowest-time another-time)
+       lowest-time
+       another-time))))
+
+(defn- min-timeout [state*]
+  (let [now (time/now)
+        tsses (vals (get state* ::recurring-tsses))
+        next-fire (transduce (map next-fire) min-time tsses)]  
+    (when next-fire
+      (time/in-millis (time/interval now next-fire)))))
 
 (defn- update-fired-tss [state* {:as tss ::keys [tss-id recurring? last-fired]}]
-  (let [now nil];(time/now)])
+  (let [now (time/now)]
     (if recurring?
       (-> state*
         (assoc-in [::recurring-tsses tss-id] tss)
@@ -40,7 +57,7 @@
         (assoc-in [::envs env-id] env-after)))))
 
 (defn- fire-recurring!> [state*]
-  (let [now nil;;(time/now)
+  (let [now (time/now)
         tsses (filter (partial fire-transition? now) (get state* ::recurring-tsses))]
     (go-loop [state* state*
               tsses (vals tsses)]
@@ -126,7 +143,7 @@
   component/Lifecycle
   (start [component]
     (let [tss> (or tss> (async/chan))
-          state (or state (atom {::envs {} ::recurring-tsses []}))]
+          state (or state (atom {::envs {} ::recurring-tsses {}}))]
       (assoc
         component
         :tss> tss>
