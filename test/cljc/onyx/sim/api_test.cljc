@@ -275,6 +275,18 @@
                 out
                 [{:hello 1} {:hello 2} {:hello 3}]))))))))
 
+(deftest test-go-step
+  (let [env (-> (seq->chan-job 43)
+                (api/init))]
+    (test-async
+      (test-within 1000
+        (go
+          (let [polled-env (<apply api/transition-env env :onyx.sim.api/go-step)]
+            (is
+              (=
+                (get-in polled-env [:tasks :in :inbox])
+                [{:hello 1} {:hello 2} {:hello 3}]))))))))
+
 (deftest test-go-job
   (let [env-chan (api/go-job! (seq->out-job))]
     (test-async

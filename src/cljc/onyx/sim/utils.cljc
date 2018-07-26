@@ -182,12 +182,10 @@
   (defmacro go-let
     "If the item is a chan take and execute body inside a go-block. Otherwise just execute the body. Use in conjunction with <apply when calling a function that returns a go-let block"
     [[sym seg-or-chan] & body]
-    `(if (read-chan? ~seg-or-chan)
-       (go
-        (let [~sym (<! ~seg-or-chan)]
-          ~@body))
-       (let [~sym ~seg-or-chan]
-         ~@body))))
-      
-        
-
+    `(let [seg-or-chan# ~seg-or-chan]
+       (if (read-chan? seg-or-chan#)
+        (go
+          (let [~sym (<! seg-or-chan#)]
+            ~@body))
+        (let [~sym seg-or-chan#]
+          ~@body)))))

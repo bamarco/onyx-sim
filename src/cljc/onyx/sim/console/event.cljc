@@ -100,7 +100,8 @@
   [kb {:as event :keys [job-id]}]
   (tss! kb
     [{:onyx/job-id job-id
-      :onyx.sim.api/event :onyx.sim.api/go-step-drain}]))
+      :onyx.sim.components.sim/recurring? true
+      :onyx.sim.api/event :onyx.sim.api/go-step}]))
 
 (defmethod handle! ::stop
   [kb {:as event :keys [job-id]}]
@@ -115,7 +116,6 @@
 
 (defmethod handle! ::submit-job
   [kb {:as event :keys [job-catalog-id]}]
-  (log/info "submitting" job-catalog-id)
   (let [snapshot (snap kb)
         ; _ (log/info "snapshot" snapshot)
         job (q snapshot sub/?catalog-entry :catalog-id job-catalog-id)]

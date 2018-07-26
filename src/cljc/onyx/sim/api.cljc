@@ -311,17 +311,17 @@
 (defn- batch-in! [task-state timeout]
   (loop [segs []
          batch-left (get-in task-state [:event :onyx.core/task-map :onyx/batch-size])]
-    ; (log/debug "batch-left" batch-left)
+    ; (log/info "batch-left" batch-left)
     (if (= batch-left 0)
       (do 
-        ; (log/debug "Batch full for" (get-in task-state [:event :onyx.core/task-map :onyx/name]))
-        ; (log/debug "  segs:" segs)
+        ; (log/info "Batch full for" (get-in task-state [:event :onyx.core/task-map :onyx/name]))
+        ; (log/info "  segs:" segs)
         segs)
       (if-let [seg (p/poll! (:pipeline task-state) (lc-hack (:event task-state)) timeout)]
         (recur (conj segs seg) (dec batch-left))
         (do
-          ; (log/debug "Batch ready for" (get-in task-state [:event :onyx.core/task-map :onyx/name]))
-          ; (log/debug "  segs:" segs)
+          ; (log/info "Batch ready for" (get-in task-state [:event :onyx.core/task-map :onyx/name]))
+          ; (log/info "  segs:" segs)
           segs)))))
 
 (defn- go-write-batch! [task-state & {:as opts :keys [timeout max-attempts] :or {timeout 1000 max-attempts 10000}}]
@@ -340,6 +340,7 @@
               (recur (dec max-attempts)))))))))
 
 (defn poll-plugins! [env & {:as opts :keys [timeout] :or {timeout 1000}}]
+  ; (log/info "poll-plugins!" (:tasks env))
   (into
     {}
     (comp
@@ -368,9 +369,18 @@
 
 (defn go-poll-plugins! [env]
   (let [inputs (poll-plugins! env)]
+    ; (log/info "new inputs" inputs)
     (new-inputs env inputs)))
 
 (defn polls-closed? [env]
+  ; (log/info "Polls closed?" 
+  ;   (into []
+  ;     (comp
+  ;       (map second)
+  ;       (filter input-plugin?)
+  ;       (map :pipeline)
+  ;       (map p/completed?))
+  ;     (:tasks env)))
   (empty?
     (into
       []

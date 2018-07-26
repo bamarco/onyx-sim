@@ -10,14 +10,30 @@
     [clojure.core.async :as async :refer [go go-loop <! >!]]
     #?(:cljs [reagent.core :refer [atom]])))
 
-(defn- fire-transition? [now {:as tss ::keys [last-fired frequency]}]
-  (= now (+ last-fired frequency)))
+(def default-timeout-secs 6)
 
-(defn- next-fire [{::keys [frequency last-fired]}]
-  (when (and last-fired frequency)
-    (time/plus last-fired frequency)))
+(defn- frequency [{:as tss ::keys [frequency]}]
+  (or frequency (time/seconds default-timeout-secs)))
 
-(defn- min-time
+(defn recurring-tsses [state*]
+  ; (log/info "recurring-tsses")
+  (vals (::recurring-tsses state*)))
+
+(defn- next-fire-time [{:as tss ::keys [last-fired]}]
+  (if-not last-fired (time/now)
+    (time/plus last-fired (frequency tss))))
+
+(defn fire-transition? [now tss]
+  ; (log/info "fire-tss?" now tss)
+  (let [next-fire (next-fire-time tss)]
+    (or 
+      (time/before? next-fire now)
+      (time/equal? next-fire now))))
+
+(defn- ensure-tss-id [tss]
+  (update tss ::tss-id #(or % (gen-uuid))))
+
+(defn min-time
   ([] nil)
   ([lowest-time] lowest-time)
   ([lowest-time another-time]
@@ -33,10 +49,13 @@
        lowest-time
        another-time))))
 
-(defn- min-timeout [state*]
+(defn- next-fire-timeout [state*]
   (let [now (time/now)
-        tsses (vals (get state* ::recurring-tsses))
-        next-fire (transduce (map next-fire) min-time tsses)]  
+        ; _ (log/info "finding timeout" now)
+        tsses (recurring-tsses state*)
+        ; _ (log/info "recurring tsses" tsses)
+        next-fire (transduce (map next-fire-time) min-time tsses)]
+    ; (log/info "next-fire" next-fire)
     (when next-fire
       (time/in-millis (time/interval now next-fire)))))
 
@@ -51,26 +70,31 @@
 (defn- tss!> [state* tss]
   (let [env-id (:onyx/job-id tss)
         env (get-in state* [::envs env-id])]
+    ; (log/info "tss!>")
     (go-let [env-after (api/transition-env env tss)]
+      ; (log/info "env-after" env-after)
       (-> state*
         (update-fired-tss tss)
         (assoc-in [::envs env-id] env-after)))))
 
 (defn- fire-recurring!> [state*]
+  ; (log/info "fire-recurring!>")
   (let [now (time/now)
-        tsses (filter (partial fire-transition? now) (get state* ::recurring-tsses))]
+        tsses (filter (partial fire-transition? now) (recurring-tsses state*))]
     (go-loop [state* state*
-              tsses (vals tsses)]
+              tsses tsses]
       (let [tss (first tsses)]
+        ; (log/info "recurring state*" state* tss)
         (if-not tss state*
           (let [state-after* (<apply tss!> state* tss)]
             (recur state-after* (rest tsses))))))))
 
-(defn- handle-tsses!> [state tss> & {:as opts :keys [control>]}]
+(defn- handle-transitions!> [state tss> & {:as opts :keys [control>]}]
   (controlled-loop control>
     (let [state* @state
-          timeout (min-timeout state*)
-          _ (log/info "tsses timeout" timeout)
+          ; _ (log/info "no fit state" state*)
+          timeout (next-fire-timeout state*)
+          ; _ (log/info "tsses timeout" timeout)
           timeout> (when timeout (async/timeout timeout))
           [seg ch] (async/alts! (into [] (remove nil?) [control> tss> timeout>]))]
       (condp = ch
@@ -81,43 +105,19 @@
 
         tss>
         (let [state-after* (<apply tss!> state* seg)]
-          (log/info "Handle tss" seg)
+          ; (log/info "Handle tss" seg)
+          ; (log/info "state-after*" state-after*)
           (if (compare-and-set! state state* state-after*)
             (recur)
-            (throw (ex-info "The envs-atom should only be set from the handle-tsses! loop. Race conditions may occur. Failed to process tss" {:tss seg}))))
+            (throw (ex-info "The envs-atom should only be set from the handle-transitions! loop. Race conditions may occur. Failed to process tss" {:tss seg}))))
 
         timeout>
-        (let [state-after* (<apply fire-recurring!> state)]
-          (log/info "Handle timeout")
+        (let [state-after* (<apply fire-recurring!> state*)]
+          ; (log/info "Handle timeout")
+          ; (log/info "state-after*" (::recurring-tsses state-after*))
           (if (compare-and-set! state state* state-after*)
             (recur)
-            (throw (ex-info "The envs-atom should only be set from the handle-tsses! loop. Race conditions may occur" {}))))))))
-
-; (defn go-envs! [envs tss> & {:as opts :keys [control>]}]
-;   ; (log/info "go-envs!")
-;   (let [control> (or control> (async/chan))]
-;     (go-loop []
-;       (let [[tss-or-sig ch] (async/alts! [control> tss>])]
-;         ; (log/info "received tss" (:onyx.sim.api/event tss-or-sig))
-;         (if (= ch control>)
-;           (if (= tss-or-sig ::kill)
-;             (log/info "Kill Signal recieved. Closing job scheduler...")
-;             (do 
-;               (log/warn "Unhandled signal:" tss-or-sig)
-;               (recur)))
-;           (let [{:as tss :onyx/keys [job-id] :onyx.sim.api/keys [event]} tss-or-sig
-;                 _ (log/info "tssing" job-id)
-;                 env (get @envs job-id)
-;                 ; _ (log/info "env retrieved" (get-in env [:tasks :in :inbox]) (get-in env [:tasks :out :outputs]))
-;                 env-after (<apply api/transition-env env tss)]
-;             (swap! envs assoc job-id env-after)
-;             (when (and (= event :onyx.sim.api/go-step)
-;                        (not= (api/status env-after) :onyx.sim.api/polls-closed))
-;               ;; FIXME: use different marker for continuous transitions
-;               (go (>! tss> tss)))
-              
-;             (recur)))))
-;     control>))
+            (throw (ex-info "The envs-atom should only be set from the handle-transitions! loop. Race conditions may occur" {}))))))))
 
 (defn submit-job [{:keys [tss>]} job]
   (let [job-id (or (:onyx/job-id job) (gen-uuid))]
@@ -127,7 +127,7 @@
                   :onyx.sim.api/job (assoc job :onyx/job-id job-id)}))))
 
 (defn transition! [{:as sim :keys [tss>]} tss]
-  (go (>! tss> tss)))
+  (go (>! tss> (ensure-tss-id tss))))
 
 (defn kill! [{:keys [control>]}]
   (when control>
@@ -148,7 +148,7 @@
         component
         :tss> tss>
         :state state
-        :control> (or control> (handle-tsses!> state tss>)))))
+        :control> (or control> (handle-transitions!> state tss>)))))
   (stop [component]
     (kill! component)
     (assoc component
