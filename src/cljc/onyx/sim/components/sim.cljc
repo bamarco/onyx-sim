@@ -59,13 +59,18 @@
     (when next-fire
       (time/in-millis (time/interval now next-fire)))))
 
-(defn- update-fired-tss [state* {:as tss ::keys [tss-id recurring? last-fired]}]
+(defn- update-fired-tss [state* {:as tss ::keys [tss-id recurring? suspend-recurring? last-fired]}]
   (let [now (time/now)]
     (if recurring?
       (-> state*
         (assoc-in [::recurring-tsses tss-id] tss)
         (assoc-in [::recurring-tsses tss-id ::last-fired] now))
       state*)))
+
+(defn- update-recurring [state* {:as tss ::keys [tss-id suspend-recurring?]}]
+  (if suspend-recurring?
+    (update state* ::recurring-tsses dissoc tss-id)
+    state*))
 
 (defn- tss!> [state* tss]
   (let [env-id (:onyx/job-id tss)
@@ -75,6 +80,7 @@
       ; (log/info "env-after" env-after)
       (-> state*
         (update-fired-tss tss)
+        (update-recurring tss)
         (assoc-in [::envs env-id] env-after)))))
 
 (defn- fire-recurring!> [state*]
@@ -133,10 +139,15 @@
   (when control>
     (go (>! control> ::kill))))
 
-;
 (defn env-in
   ([{:keys [state]}] (::envs @state))
   ([sim path] (get-in (env-in sim) path)))
+
+(defn recurring-transitions-for
+  ([{:keys [state]}] (recurring-tsses @state))
+  ([sim job-id]
+   (log/info "rec tss for" job-id)
+   (filter #(= job-id (:onyx/job-id %)) (recurring-transitions-for sim))))
 
 (defrecord OnyxSimulator [state tss> control>]
   ;; ???: give tss> a buffer. May need to be flushed on stop.

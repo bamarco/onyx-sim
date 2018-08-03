@@ -1,6 +1,7 @@
 (ns onyx.sim.console.subscription
   (:require
     [onyx.sim.kb :refer [sub q]]
+    [taoensso.timbre :as log]
     [onyx.sim.components.sim :as sim]
     [onyx.sim.utils :refer [cat-into forv]]
     [datascript.core :as d]))
@@ -105,6 +106,10 @@
    (filterv 
     #(= (:onyx.sim.api/master %) master-catalog-id)
     (running-envs kb))))
+
+(defn recurring-transitions-for [kb & args]
+  (log/info "args" args)
+  (vec (apply sim/recurring-transitions-for (:sim kb) args)))
 
 (defn running-job-ids
   ([kb] (running-job-ids kb nil))

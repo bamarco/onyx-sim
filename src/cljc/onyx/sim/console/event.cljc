@@ -97,17 +97,17 @@
       :onyx.sim.api/event :onyx.sim.api/go-drain}]))
 
 (defmethod handle! ::play
-  [kb {:as event :keys [job-id]}]
+  [kb {:as event :keys [job-id recurring-tsses]}]
   (tss! kb
     [{:onyx/job-id job-id
       :onyx.sim.components.sim/recurring? true
       :onyx.sim.api/event :onyx.sim.api/go-step}]))
 
 (defmethod handle! ::stop
-  [kb {:as event :keys [job-id]}]
-  (tss! kb
-    [{:onyx/job-id job-id
-      :onyx.sim.api/event :onyx.sim.api/suspend}]))
+  [kb {:as event :keys [job-id recurring-tsses]}]
+  (tss! 
+    kb 
+    (mapv #(assoc % :onyx.sim.components.sim/suspend-recurring? true) recurring-tsses)))
 
 (defmethod handle! ::hide-task
   [kb {:as event :keys [selected-job task-name]}]

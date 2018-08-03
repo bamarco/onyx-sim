@@ -296,7 +296,9 @@
 
 (defn- action-bar [model job-id]
   ;; FIXME: running?
-  (let [running? (listen model sub/?animating)]
+  (let [recurring-tsses (listen model sub/recurring-transitions-for job-id)
+        running? (not (empty? recurring-tsses))]
+    (log/info "recurring" running?)
     [re-com/h-box
       :gap ".5ch"
       :children
@@ -315,7 +317,7 @@
           :on-click #(dispatch! model :onyx.sim.console.event/drain :job-id job-id)]
         [re-com/button
           :label (if running? "Stop" "Play")
-          :on-click #(dispatch! model (if running? :onyx.sim.console.event/stop :onyx.sim.console.event/play) :job-id job-id)]]]))
+          :on-click #(dispatch! model (if running? :onyx.sim.console.event/stop :onyx.sim.console.event/play) :job-id job-id :recurring-tsses recurring-tsses)]]]))
 
 (defn env-view [model job-id]
   (let [{::keys [env-style next-action? task-hider? description?]} (listen model sub/?settings)]
