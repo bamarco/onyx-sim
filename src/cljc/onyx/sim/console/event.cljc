@@ -3,6 +3,7 @@
     [taoensso.timbre :as log]
     [onyx.sim.components.sim :as sim]
     [datascript.core :as d]
+    [onyx.sim.api :as api]
     [onyx.sim.kb :refer [q snap]]
     [onyx.sim.utils :refer [gen-uuid]]
     [onyx.sim.console.subscription :as sub]
@@ -51,14 +52,29 @@
 ;;;
 ;;; DB fns
 ;;;
-(defn hide-task 
-  "Hide the given task from the ui env display"
-  [db selected-job task-name]
-  (let [{:onyx.sim.console.ui/keys [hidden-tasks]} (d/pull db [:onyx.sim.console.ui/hidden-tasks] [:onyx/job-id selected-job])]
-    [[:db/add 
-      [:onyx/job-id selected-job] 
-      :onyx.sim.console.ui/hidden-tasks
-      (disj hidden-tasks task-name)]]))
+; (defn hide-task 
+;   "Hide the given task from the ui env display"
+;   [db selected-job task-name]
+;   (let [{:onyx.sim.console.ui/keys [hidden-tasks]} (d/pull db [:onyx.sim.console.ui/hidden-tasks] [:onyx/job-id selected-job])]
+;     [[:db/add 
+;       [:onyx/job-id selected-job] 
+;       :onyx.sim.console.ui/hidden-tasks
+;       (disj hidden-tasks task-name)]]))
+
+;;;
+;;; Custom transitions
+;;;
+(defmethod api/transition-env ::toggle-hide-task
+  [env {:keys [task-name]}]
+  (update-in env [:tasks task-name :onyx.sim.console.ui/hidden?] not))
+
+(defmethod api/transition-env ::hide-tasks
+  [env {:keys [hidden-tasks]}]
+  (reduce
+    (fn [env task-name]
+      (assoc-in env [:tasks task-name :onyx.sim.console.ui/hidden?] (contains? hidden-tasks task-name)))
+    env
+    (map first (:tasks env))))
 
 ;;;
 ;;; Handlers
@@ -111,8 +127,19 @@
 
 (defmethod handle! ::hide-task
   [kb {:as event :keys [selected-job task-name]}]
-  (tx! kb
-    [[:db.fn/call hide-task selected-job task-name]]))
+  (tss! kb
+    [{:onyx/job-id selected-job
+      :task-name task-name
+      :onyx.sim.api/event ::toggle-hide-task}]))
+  ; (tx! kb
+  ;   [[:db.fn/call hide-task selected-job task-name]]))
+
+(defmethod handle! ::hide-tasks
+  [kb {:as event :keys [selected-job hidden-tasks]}]
+  (tss! kb
+    [{:onyx/job-id selected-job
+      :hidden-tasks hidden-tasks
+      :onyx.sim.api/event ::hide-tasks}]))
 
 (defmethod handle! ::submit-job
   [kb {:as event :keys [job-catalog-id]}]

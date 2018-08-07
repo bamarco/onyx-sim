@@ -179,8 +179,7 @@
 
 (defn- hidden-tasks [model job-id]
   (let [choices (or (listen model sub/sorted-task-labels job-id) [])
-        {::keys [hidden-tasks]} (listen model sub/?hidden-tasks)
-        hidden-tasks (or hidden-tasks #{})]
+        hidden-tasks (listen model sub/hidden-tasks job-id)]
     [re-com/v-box
       :children
       [
@@ -188,7 +187,7 @@
         [re-com/selection-list
           :choices choices
           :model hidden-tasks
-          :on-change #(dispatch! model :onyx.sim.console.event/eav :e [:onyx/job-id job-id] :a ::hidden-tasks :v %)]]]))
+          :on-change #(dispatch! model :onyx.sim.console.event/hide-tasks :hidden-tasks % :selected-job job-id)]]]))
 
 (defn- default-render [segs]
   [code :code segs])
@@ -254,12 +253,12 @@
 
 (defn- pretty-env [model job-id]
   (let [sorted-tasks (listen model sub/env-in [job-id :sorted-tasks])
-        hidden-tasks nil];(listen model hidden-tasks job-id)]
-    ; (log/info "sorted-tasks" job-id sorted-tasks)
+        hidden-tasks (listen model sub/hidden-tasks job-id)]
+    (log/info "hidden-tasks" job-id hidden-tasks)
     [re-com/v-box
      :class "onyx-env"
      :children
-     (forv [task-name (remove (or hidden-tasks #{}) sorted-tasks)]
+     (forv [task-name (remove hidden-tasks sorted-tasks)]
         ^{:key task-name}
         [pretty-task-box model job-id task-name])]))
 
@@ -298,7 +297,7 @@
   ;; FIXME: running?
   (let [recurring-tsses (listen model sub/recurring-transitions-for job-id)
         running? (not (empty? recurring-tsses))]
-    (log/info "recurring" running?)
+    ; (log/info "recurring" running?)
     [re-com/h-box
       :gap ".5ch"
       :children

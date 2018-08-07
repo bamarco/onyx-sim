@@ -2,6 +2,7 @@
   (:require
     [clojure.core.async :as async] ;:refer [close!]]
     [onyx.plugin.core-async]
+    [onyx.plugin.seq]
     [onyx.sim.utils :refer [gen-uuid]]))
 
 (def workflow
@@ -22,9 +23,10 @@
 
 (def catalog
   [{:onyx/name :in
-    :onyx/plugin :onyx.plugin.core-async/input
+    ; :onyx/plugin :onyx.plugin.core-async/input
+    :onyx/plugin :onyx.plugin.seq/input
     :onyx/type :input
-    :onyx/medium :core.async
+    ; :onyx/medium :core.async
     :onyx/max-peers 1
     :onyx/batch-size batch-size
     :onyx/doc "Reads segments from a core.async channel"}
@@ -114,7 +116,9 @@
 
 (def lifecycles
   [{:lifecycle/task :in
-    :lifecycle/calls ::in-calls}
+    :seq/sequential input-segments
+    :lifecycle/calls :onyx.plugin.seq/inject-seq-via-lifecycle}
+    ; :lifecycle/calls ::in-calls}
    {:lifecycle/task :in
     :lifecycle/calls :onyx.plugin.core-async/reader-calls}
    {:lifecycle/task :out

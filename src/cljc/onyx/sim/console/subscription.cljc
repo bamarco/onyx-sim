@@ -63,10 +63,10 @@
 (defn master-id [kb job-id]
   (env-in [kb job-id :onyx.sim.api/master]))
 
-(defn hidden-tasks [kb job-id]
-  (let [catalog-id (master-id kb job-id)
-        {:onyx.sim.console.ui/keys [hidden-tasks]} @(sub kb ?job-expr :expr [:onyx.sim.ui/hidden-tasks] :job-id catalog-id)]
-    hidden-tasks))
+; (defn hidden-tasks [kb job-id]
+;   (let [catalog-id (master-id kb job-id)
+;         {:onyx.sim.console.ui/keys [hidden-tasks]} @(sub kb ?job-expr :expr [:onyx.sim.ui/hidden-tasks] :job-id catalog-id)]
+;     hidden-tasks))
 
 (defn render-fn [kb job-id]
   (let [catalog-id (master-id kb job-id)
@@ -108,7 +108,7 @@
     (running-envs kb))))
 
 (defn recurring-transitions-for [kb & args]
-  (log/info "args" args)
+  ; (log/info "args" args)
   (vec (apply sim/recurring-transitions-for (:sim kb) args)))
 
 (defn running-job-ids
@@ -142,3 +142,12 @@
   "The datoms in the datascript db"
   [kb]
   (d/datoms (the-db kb) :eavt))
+
+(defn hidden-tasks 
+  [kb job-id]
+  (into
+    #{}
+    (comp
+      (filter :onyx.sim.console.ui/hidden?)
+      (map #(get-in % [:event :onyx.core/task-map :onyx/name])))
+    (vals (env-in kb [job-id :tasks]))))

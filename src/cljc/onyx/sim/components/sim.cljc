@@ -146,7 +146,7 @@
 (defn recurring-transitions-for
   ([{:keys [state]}] (recurring-tsses @state))
   ([sim job-id]
-   (log/info "rec tss for" job-id)
+  ;  (log/info "rec tss for" job-id)
    (filter #(= job-id (:onyx/job-id %)) (recurring-transitions-for sim))))
 
 (defrecord OnyxSimulator [state tss> control>]
