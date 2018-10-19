@@ -3,14 +3,19 @@
     [re-com.core :as re-com]
     [taoensso.timbre :as log]
     [clojure.spec.alpha :as s]
-    [posh.reagent :as posh]
     [onyx.sim.api :as api]
     [onyx.sim.kb :as kb]
     [onyx.sim.components.dispatcher :as dispatcher]
     [onyx.sim.console.subscription :as sub]
-    [datascript.core :as d]
+    [datascript.core :as ds]
+    ;[datahike.core :as dh]
     [onyx.sim.kb :as kb]
+    [posh.plugin-base :as posh]
+    [uxgear.kit.react.reagent]
+    [uxgear.kit.kb.datascript]
+    ;[uxgear.kit.kb.datahike]
     [reagent.ratom :as ratom]
+    [reagent.core :as reagent]
     [clojure.core.async :as async :refer [go go-loop >! <! alts!]]
     [onyx.sim.utils :as utils :refer [forv gen-uuid third deref-or-value ppr-str mapply]]))
 
@@ -120,7 +125,7 @@
 ;;;
 (defn logo [model]
   (let [animating? (listen model sub/?animating)]
-    ; (log/info "animating?" animating?)
+    (log/info "animating?" animating?)
     [active-logo
       :img "ns/onyx/onyx-logo.png"
       :active? animating?
@@ -470,18 +475,27 @@
       :on-change #(dispatch! model ::selected-nav :selected %)]))
 
 (defn selector [model]
-  [re-com/v-box
-    :children
-    [
-      [re-com/gap :size ".25rem"]
-      [re-com/h-box
-        :style {:margin-left "auto"
-                :margin-right "auto"}
-        :align :center
-        :gap "1ch"
-        :children
-        [
-          [logo model]
-          [nav-bar model]]]
-      [re-com/gap :size ".25rem"]
-      [selected model]]])
+  (let [ds-conn (ds/create-conn {::name {:db/unique :db.unique/identity}})
+        _ (posh/transact! ds-conn [{::name ::hello :msg "Hello, ux posh!"}])
+        _ (posh/posh! ds-conn)
+        hello (posh/pull ds-conn [:msg] [::name ::hello])]
+    (log/info "done poshing")
+    (fn [model]
+      [:div
+        [:p "hi"]])))
+
+  ; [re-com/v-box
+  ;   :children
+  ;   [
+  ;     [re-com/gap :size ".25rem"]
+  ;     [re-com/h-box
+  ;       :style {:margin-left "auto"
+  ;               :margin-right "auto"}
+  ;       :align :center
+  ;       :gap "1ch"
+  ;       :children
+  ;       [
+  ;         [logo model]
+  ;         [nav-bar model]]]
+  ;     [re-com/gap :size ".25rem"]
+  ;     [selected model]]])

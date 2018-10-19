@@ -49,6 +49,20 @@
                      ?job-id :job-id}})
 
 
+; (def ?job-expr2
+;   '{:type :onyx.sim.kb.datascript/pull
+;     :eid [:onyx.sim.api/catalog-id ?job-id]
+;     :pull-expr ?expr
+;     :in [$ ?expr ?job-id]})
+
+; (def ?render-fn
+;   '{:type :onyx.sim.kb.datascript/attr
+;     :eid [:onyx.sim.api/catalog-id ?job-id]
+;     :attr :onyx.sim.console.ui/render
+;     :$ :datascript
+;     :in [$]})
+
+;;; ???: Should datahike/datascript/datomic support plugin be in posh? like datascript + react OR datahike + rum
 
 ;;;
 ;;; Subsription Functions

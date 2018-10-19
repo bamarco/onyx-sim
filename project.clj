@@ -10,6 +10,7 @@
     [org.clojure/clojurescript "1.10.238"]
     [org.clojure/core.async "0.4.474"]
     [datascript "0.16.4"]
+    [io.replikativ/datahike "0.1.2"]
     [re-com "2.1.0"]
     [com.cognitect/transit-clj "0.8.300"]
     [cljs-http "0.1.44"]
@@ -19,6 +20,8 @@
     [ring-logger-timbre "0.7.6"]
     [compojure "1.6.0"]
     [environ "1.1.0"]
+    [rum "0.11.2"]
+    [net.cgrand/macrovich "0.2.1"]
     [com.stuartsierra/component "0.3.2"]
     [org.danielsz/system "0.4.1"]
     [com.rpl/specter "1.1.1"]
@@ -34,7 +37,7 @@
 
   :min-lein-version "2.6.1"
 
-  :source-paths ["src/clj" "src/cljs" "src/cljc"]
+  :source-paths ["src/clj" "src/cljs" "src/cljc" "checkouts/posh/src" "checkouts/uxgear/src"]
 
   :test-paths ["test/clj" "test/cljc"]
 
@@ -56,7 +59,7 @@
 
   :cljsbuild {:builds
               [{:id "app"
-                :source-paths ["src/cljs" "src/cljc"
+                :source-paths ["src/cljs" "src/cljc" "checkouts/posh/src" "checkouts/uxgear/src"
                                "dev"]
 
                 :figwheel {:on-jsload "onyx.sim.system/reset"}
