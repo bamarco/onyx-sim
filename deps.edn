@@ -1,0 +1,40 @@
+{:deps {org.clojure/clojure {:mvn/version "1.11.1"}
+        org.clojure/clojurescript {:mvn/version "1.11.60"}
+        org.clojure/tools.reader {:mvn/version "1.3.6"}
+        org.clojure/core.async {:mvn/version "1.6.673"}
+        org.clojure/data.json {:mvn/version "2.4.0"}
+        clojure-future-spec/clojure-future-spec {:mvn/version "1.9.0-alpha17"}
+        org.clojure/math.numeric-tower {:mvn/version "0.0.4"}
+        datascript/datascript {:mvn/version "1.4.0"}
+        re-com/re-com {:mvn/version "2.13.2"}
+        com.cognitect/transit-clj {:mvn/version "1.0.329"}
+        http-kit/http-kit {:mvn/version "2.6.0"}
+        cljs-http/cljs-http {:mvn/version "0.1.46"}
+        ring/ring {:mvn/version "1.9.6"}
+        ring/ring-defaults {:mvn/version "0.3.4"}
+        bk/ring-gzip {:mvn/version "0.3.0"}
+        ring-logger-timbre/ring-logger-timbre {:mvn/version "0.7.6"}
+        compojure/compojure {:mvn/version "1.7.0"}
+        environ/environ {:mvn/version "1.2.0"}
+        com.stuartsierra/component {:mvn/version "1.1.0"}
+        org.danielsz/system {:mvn/version "0.4.8"}
+        org.clojure/tools.namespace {:mvn/version "1.3.0"}
+        reagent/reagent {:mvn/version "1.1.1"}
+        cljsjs/react {:mvn/version "18.2.0-1"}
+        cljsjs/react-dom {:mvn/version "18.2.0-1"}
+        denistakeda/posh {:mvn/version "0.5.9"}
+        com.taoensso/timbre {:mvn/version "6.0.4"}
+        org.onyxplatform/onyx-spec {:mvn/version "0.11.0.2"}
+        org.onyxplatform/onyx-local-rt {:mvn/version "0.11.0.0-alpha5"}
+        }
+ :paths ["src/clj" "src/cljs" "src/cljc" "resources" "target"]
+ :aliases {:dev {:extra-deps {com.bhauman/rebel-readline-cljs {:mvn/version "0.1.4"}
+                              org.slf4j/slf4j-nop {:mvn/version "1.7.30"}
+                              reloaded.repl/reloaded.repl {:mvn/version "0.2.4"}
+                              ;com.fzakaria/slf4j-timbre {:mvn/version "0.3.21"}
+                              com.bhauman/figwheel-main {:mvn/version "0.2.17"}}
+                 :extra-paths ["test" "dev"]}
+           :build {:main-opts ["-m" "figwheel.main" "-b" "dev" "-r"]}
+           :min   {:main-opts ["-m" "figwheel.main" "-O" "advanced" "-bo" "dev"]}
+           :main {:extra-deps {com.fzakaria/slf4j-timbre {:mvn/version "0.3.21"}}
+                  :main-opts ["-m" "onyx.sim.application"]}}}

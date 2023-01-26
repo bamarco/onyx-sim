@@ -178,7 +178,7 @@
     {:control/type :active-logo
      :control/name :onyx.sim/logo
      :control/label "nyx-sim (alpha)"
-     :control/img "ns/onyx/onyx-logo.png"
+     :control/img "onyx/onyx-logo.png"
      :control/active? (::any-running?)}
     {:control/type :indicator
      :control/name :onyx.sim/description

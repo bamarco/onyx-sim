@@ -3,23 +3,18 @@
             [clojure.java.io :as io]
             [compojure.core :refer [ANY GET PUT POST DELETE routes]]
             [compojure.route :refer [resources]]
-            [hiccup.core :as hiccup]
-            [hiccup.form :as form]
-            [hiccup.page :as page]
-            [ring.util.response :refer [response]]))
+            [ring.util.response :refer [content-type resource-response response]]))
 
 (defn home-routes [endpoint]
   (routes
    (GET "/" _
-     (-> "public/ns/onyx/sim/index.html"
-         io/resource
-         io/input-stream
-         response
-         (assoc :headers {"Content-Type" "text/html; charset=utf-8"})))
+        (->
+         "onyx/sim/index.html"
+         (resource-response  {:root "public"})
+         (content-type "text/html")))
     (GET "/favicon.ico" _
-     (-> "public/ns/onyx/onyx-logo.ico"
-         io/resource
-         io/input-stream
-         response
-         (assoc :headers {"Content-Type" "text/html; charset=utf-8"})))
+         (->
+          "onyx/onyx-logo.ico"
+          (resource-response {:root "public"})
+          (content-type "image/x-icon")))
    (resources "/")))
