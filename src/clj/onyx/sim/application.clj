@@ -18,21 +18,21 @@
   ;(jetty/new-jetty :port http-port)
   )
 
-(defn app-system [config]
-  (component/system-map
-   :routes     (new-endpoint home-routes)
-   :middleware (new-middleware {:middleware (:middleware config)})
-   :handler    (-> (new-handler)
-                   (component/using [:routes :middleware]))
-   :http       (-> (new-server config)
-                   (component/using [:handler]))))
+(defn app-system
+  ([] (app-system (config)))
+  ([config]
+   (component/system-map
+    :routes     (new-endpoint home-routes)
+    :middleware (new-middleware {:middleware (:middleware config)})
+    :handler    (-> (new-handler)
+                    (component/using [:routes :middleware]))
+    :http       (-> (new-server config)
+                    (component/using [:handler])))))
 
-(defn run []
-  (-> (config)
-      app-system
-      component/start))
+(defn system []
+  (app-system (config)))
+
+(def start component/start)
 
 (defn -main [& _]
-  (let [sys (run)]
-    (println "Started onyx.sim on"
-             (str "http://localhost:" (-> sys :config :http-port)))))
+  (start (system)))

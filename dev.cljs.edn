@@ -1,6 +1,12 @@
 ^{:watch-dirs ["test" "src/cljs" "src/cljc"]
   :css-dirs ["resources/public/css"]
   :auto-testing true
-  ;:auto-bundle :webpack
-   }
-{:main onyx.sim.system}
+  :ring-handler onyx.sim.dev/ring-handler
+  }
+{:main onyx.sim.system
+ :optimizations :none
+ :pretty-print true
+ :source-map true
+ :asset-path "cljs-out/dev"
+ :output-to "target/public/cljs-out/main.js"
+ :output-dir "target/public/cljs-out/dev"}

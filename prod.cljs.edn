@@ -1,0 +1,9 @@
+{:main onyx.sim.system
+ :optimizations :advanced
+ :pretty-print false
+ :source-map "production/public/cljs-out/main.js.map"
+ :asset-path "cljs-out/prod"
+ :language-in     :ecmascript-next
+ :language-out    :ecmascript-next
+ :output-to "production/public/cljs-out/main.js"
+ :output-dir "production/public/cljs-out/prod"}

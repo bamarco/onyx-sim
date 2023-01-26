@@ -1,10 +1,10 @@
 (ns user
-  (:require [onyx.sim.application :refer [run]]
+  (:require [onyx.sim.application :as app]
             [clojure.tools.namespace.repl :refer [set-refresh-dirs]]
             [reloaded.repl]))
 
 (set-refresh-dirs "src" "dev")
-(reloaded.repl/set-init! #(run))
+(reloaded.repl/set-init! #(app/start (app/system)))
 
 ;; Set up aliases so they don't accidentally
 ;; get scrubbed from the namespace declaration

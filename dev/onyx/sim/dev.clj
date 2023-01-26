@@ -1,7 +1,8 @@
 (ns onyx.sim.dev
-  (:require [onyx.sim.application :refer [run]]))
+  (:require [onyx.sim.application :refer [start system]]))
 
 (def ring-handler
-  (let [sys (run)]
-    (-> sys :handler :handler)
-    ))
+  (let [sys (-> (system)
+                (dissoc :http)
+                start)]
+    (-> sys :handler :handler)))

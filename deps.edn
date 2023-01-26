@@ -27,14 +27,19 @@
         org.onyxplatform/onyx-spec {:mvn/version "0.11.0.2"}
         org.onyxplatform/onyx-local-rt {:mvn/version "0.11.0.0-alpha5"}
         }
- :paths ["src/clj" "src/cljs" "src/cljc" "resources" "target"]
- :aliases {:dev {:extra-deps {com.bhauman/rebel-readline-cljs {:mvn/version "0.1.4"}
-                              org.slf4j/slf4j-nop {:mvn/version "1.7.30"}
-                              reloaded.repl/reloaded.repl {:mvn/version "0.2.4"}
-                              ;com.fzakaria/slf4j-timbre {:mvn/version "0.3.21"}
-                              com.bhauman/figwheel-main {:mvn/version "0.2.17"}}
-                 :extra-paths ["test" "dev"]}
-           :build {:main-opts ["-m" "figwheel.main" "-b" "dev" "-r"]}
-           :min   {:main-opts ["-m" "figwheel.main" "-O" "advanced" "-bo" "dev"]}
+ :paths ["src/clj" "src/cljs" "src/cljc" "resources"]
+ :aliases {:fig {:extra-deps {
+                              ;org.slf4j/slf4j-nop {:mvn/version "1.7.30"}
+                              com.fzakaria/slf4j-timbre {:mvn/version "0.3.21"}
+                              com.bhauman/figwheel-main {:mvn/version "0.2.18"}}}
+           :build {:extra-deps {com.bhauman/rebel-readline-cljs {:mvn/version "0.1.4"}
+                                reloaded.repl/reloaded.repl {:mvn/version "0.2.4"}}
+                   :main-opts ["-m" "figwheel.main" "-b" "dev" "-r"]
+                   :extra-paths ["target" "dev" "test"]}
+           ;:min   {:main-opts ["-m" "figwheel.main" "-O" "advanced" "-bo" "dev"]}
+           :prod  {:extra-deps {com.fzakaria/slf4j-timbre {:mvn/version "0.3.21"}}
+                   :extra-paths ["production"]
+                   :main-opts ["-m" "figwheel.main" "-bo" "prod"]}
            :main {:extra-deps {com.fzakaria/slf4j-timbre {:mvn/version "0.3.21"}}
+                  :extra-paths ["production"]
                   :main-opts ["-m" "onyx.sim.application"]}}}
