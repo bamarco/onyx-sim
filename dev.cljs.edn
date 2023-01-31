@@ -1,5 +1,5 @@
 ^{:watch-dirs ["test" "src/cljs" "src/cljc"]
-  :css-dirs ["resources/public/css"]
+  :css-dirs ["resources/public/onyx/sim/css"]
   :auto-testing true
   :ring-handler onyx.sim.dev/ring-handler
   }
