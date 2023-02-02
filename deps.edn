@@ -27,7 +27,7 @@
         org.onyxplatform/onyx-spec {:mvn/version "0.11.0.2"}
         org.onyxplatform/onyx-local-rt {:mvn/version "0.11.0.0-alpha5"}
         }
- :paths ["src/clj" "src/cljs" "src/cljc" "resources"]
+ :paths ["src/clj" "src/cljs" "src/cljc" "resources" "classes"]
  :aliases {:fig {:extra-deps {
                               ;org.slf4j/slf4j-nop {:mvn/version "1.7.30"}
                               com.fzakaria/slf4j-timbre {:mvn/version "0.3.21"}
@@ -41,5 +41,15 @@
                    :extra-paths ["production"]
                    :main-opts ["-m" "figwheel.main" "-bo" "prod"]}
            :main {:extra-deps {com.fzakaria/slf4j-timbre {:mvn/version "0.3.21"}}
-                  :extra-paths ["production"]
-                  :main-opts ["-m" "onyx.sim.application"]}}}
+                  :extra-paths ["production" "classes"]
+                  :main-opts ["-m" "onyx.sim.application"]}
+           :compile {:main-opts ["-e" "(compile 'onyx.sim.application)"]}
+           :uber {:replace-deps {uberdeps/uberdeps {:mvn/version "1.2.0"}
+                                 org.clojure/clojure {:mvn/version "1.11.1"}}
+                  :replace-paths []
+                  :main-opts ["-m" "uberdeps.uberjar"
+                              ;"--deps" "deps.edn"
+                              "--target" "target/project.jar"
+                              "--main-class" "onyx.sim.application"
+                              "--aliases" ":main"
+                              ]}}}

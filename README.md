@@ -88,11 +88,13 @@ do this is `M-x cider-jack-in-clojurescript`.
 To build cljs use
 ``` shell
 clj -M:fig:prod
+clj -M:compile
+clojure -M:uber
 ```
 
 To run use
 ``` shell
-clj -M:main
+java -jar target/project.jar
 ```
 
 ## License
