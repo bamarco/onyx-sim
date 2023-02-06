@@ -2,18 +2,18 @@
 
 Try it out here: https://mademonkey.com/onyx-sim
 
-Onyx simimulator is an interactive interface for the the [onyx local runtime](https://github.com/onyx-platform/onyx-local-rt).
+The Onyx simimulator is an interactive interface for the the [onyx local runtime](https://github.com/onyx-platform/onyx-local-rt).
 
 ## Dat View
 
 Onyx-sim is a temporary home for future [datview](https://github.com/metasoarous/datview) part of the [datsys](https://github.com/metasoarous/datsys) project.
 
-What is a segment?
+### What is a segment?
 
 You can think of a segment as a plain clojure map or object or record. In onyx it is called a segment partially because it could be broken into peices and distributed to various tasks.
 
 
-What is a task?
+### What is a task?
 
 Basically a function with some extra meta-data that can be placed in the onyx compute graph.
 
