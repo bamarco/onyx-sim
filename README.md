@@ -1,6 +1,6 @@
 # onyx-sim
 
-Try it out here: https://mademonkey.com/onyx-sim
+Try it out here: http://mademonkey.com/onyx-sim
 
 The Onyx simimulator is an interactive interface for the the [onyx local runtime](https://github.com/onyx-platform/onyx-local-rt).
 
